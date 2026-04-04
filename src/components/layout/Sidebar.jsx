@@ -96,8 +96,8 @@ export default function Sidebar() {
     }}>
       {/* Header / Logo */}
       <div style={{ padding: '24px 24px 12px' }}>
-        <h1 style={{ color: '#fff', fontSize: 20, fontWeight: 900, margin: 0, letterSpacing: -0.5 }}>ARTEGON<span style={{ color: '#dc2626' }}>.ERP</span></h1>
-        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: 2, color: '#475569', marginTop: 4, textTransform: 'uppercase' }}>
+        <img src="/logo.png" alt="ARTEGON" style={{ height: 40, objectFit: 'contain', display: 'block', marginBottom: 8 }} />
+        <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: 3, color: '#64748b', margin: 0, textTransform: 'uppercase' }}>
           DEFENSE SYSTEMS OS
         </p>
       </div>
