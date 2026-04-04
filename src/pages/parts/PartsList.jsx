@@ -44,8 +44,8 @@ export default function PartsList() {
     setLoading(true);
     try {
       const [p, m] = await Promise.all([getParts(), getModels()]);
-      setParts(p.docs.map(d => ({ id: d.id, ...d.data() })));
-      setModels(m.docs.map(d => ({ id: d.id, ...d.data() })));
+      setParts(p?.docs?.map(d => ({ id: d?.id, ...d?.data?.() })) || []);
+      setModels(m?.docs?.map(d => ({ id: d?.id, ...d?.data?.() })) || []);
     } catch (e) {
       console.error(e);
       toast.error('Veriler yüklenirken hata oluştu');
@@ -127,28 +127,28 @@ export default function PartsList() {
               <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#475569', marginBottom: 6, textTransform: 'uppercase' }}>Kategori</label>
               <select value={filterCat} onChange={e => setFilterCat(e.target.value)} style={INPUT}>
                 <option value="">Tümü</option>
-                {PART_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                {PART_CATEGORIES?.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <div>
               <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#475569', marginBottom: 6, textTransform: 'uppercase' }}>Alt Kategori</label>
               <select value={filterSubCat} onChange={e => setFilterSubCat(e.target.value)} style={INPUT}>
                 <option value="">Tümü</option>
-                {PART_SUB_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                {PART_SUB_CATEGORIES?.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <div>
               <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#475569', marginBottom: 6, textTransform: 'uppercase' }}>Stok Durumu</label>
               <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={INPUT}>
                 <option value="">Tümü</option>
-                {Object.keys(STOCK_STATUSES).map(s => <option key={s} value={s}>{s}</option>)}
+                {Object.keys(STOCK_STATUSES || {})?.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
             <div>
               <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#475569', marginBottom: 6, textTransform: 'uppercase' }}>Model</label>
               <select value={filterModel} onChange={e => setFilterModel(e.target.value)} style={INPUT}>
                 <option value="">Tüm Modeller</option>
-                {models.map(m => <option key={m.id} value={m.id}>{m.modelCode}</option>)}
+                {models?.map(m => <option key={m?.id} value={m?.id}>{m?.modelCode}</option>)}
               </select>
             </div>
             <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 8 }}>
@@ -177,10 +177,10 @@ export default function PartsList() {
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 ? (
+            {filtered?.length === 0 ? (
               <tr><td colSpan={8} style={{ padding: 48 }}><EmptyState message="Arama kriterlerine uygun parça bulunamadı." /></td></tr>
             ) : (
-              filtered.map(p => {
+              filtered?.map(p => {
                 const isLow = (p.currentStock || 0) <= (p.minStock || 0);
                 const isQuarantine = p.stockStatus === 'Karantina';
                 
@@ -217,8 +217,8 @@ export default function PartsList() {
                     <td style={TD}>
                       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                         {p.usedInModels?.length > 0 ? (
-                          p.usedInModels.slice(0, 2).map((m, idx) => (
-                            <span key={idx} style={{ fontSize: 10, background: '#1e293b', padding: '2px 6px', borderRadius: 4, color: '#94a3b8' }}>{m.modelCode || m.modelName}</span>
+                          p.usedInModels?.slice(0, 2)?.map((m, idx) => (
+                            <span key={idx} style={{ fontSize: 10, background: '#1e293b', padding: '2px 6px', borderRadius: 4, color: '#94a3b8' }}>{m?.modelCode || m?.modelName}</span>
                           ))
                         ) : '—'}
                         {p.usedInModels?.length > 2 && <span style={{ fontSize: 10, alignSelf: 'center', color: '#475569' }}>+{p.usedInModels.length - 2}</span>}
@@ -231,8 +231,8 @@ export default function PartsList() {
                          {isQuarantine && <ShieldAlert size={14} color="#fbbf24" />}
                          <span style={{ 
                            fontSize: 11, fontWeight: 700, padding: '4px 8px', borderRadius: 6, 
-                           background: STOCK_STATUSES[p.stockStatus || 'Sağlam'].color.split(' ')[0], 
-                           color: STOCK_STATUSES[p.stockStatus || 'Sağlam'].color.split(' ')[1] 
+                           background: STOCK_STATUSES[p.stockStatus || 'Sağlam']?.color?.split(' ')[0] || '#1e293b', 
+                           color: STOCK_STATUSES[p.stockStatus || 'Sağlam']?.color?.split(' ')[1] || '#94a3b8' 
                          }}>
                            {p.stockStatus || 'Sağlam'}
                          </span>

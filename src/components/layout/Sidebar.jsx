@@ -158,8 +158,12 @@ export default function Sidebar() {
                         transition: 'all 0.2s'
                       })}
                     >
-                      <item.icon size={16} strokeWidth={isActive ? 2.5 : 1.5} />
-                      <span>{item.label}</span>
+                      {({ isActive }) => (
+                        <>
+                          <item.icon size={16} strokeWidth={isActive ? 2.5 : 1.5} />
+                          <span>{item.label}</span>
+                        </>
+                      )}
                     </NavLink>
                   ))}
                 </div>
