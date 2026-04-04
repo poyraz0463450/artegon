@@ -294,7 +294,7 @@ export default function PartDetail() {
                       {PART_UNITS.map(u=><option key={u} value={u}>{u}</option>)}
                     </select>
                   </div>
-                  <div><label style={LABEL_STYLE}>Revizyon</label><input style={INPUT_STYLE} value={part.revision || 'A'} onChange={e=>setPart({...part,revision:e.target.value})} disabled={!canEdit} /></div>
+
                   <div style={{ gridColumn: '1 / -1' }}><label style={LABEL_STYLE}>Açıklama</label><textarea style={{...INPUT_STYLE, height: 60, padding: 8, resize: 'none'}} value={part.description || ''} onChange={e=>setPart({...part,description:e.target.value})} disabled={!canEdit} /></div>
                   <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16, paddingBottom: 8, gridColumn: '1 / -1' }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', color: '#e2e8f0', fontSize: 13, fontWeight: 700 }}>
@@ -312,7 +312,8 @@ export default function PartDetail() {
 
               <div style={CARD_STYLE}>
                 <h3 style={{ fontSize: 14, fontWeight: 800, color: '#60a5fa', margin: '0 0 20px', display: 'flex', alignItems: 'center', gap: 8 }}><TrendingUp size={16}/> Stok & Depo Ayarları</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 16 }}>
+                  <div><label style={LABEL_STYLE}>Mevcut Stok</label><input type="number" min="0" style={INPUT_STYLE} value={part.currentStock} onChange={e=>setPart({...part,currentStock:Number(e.target.value)})} disabled={!canEdit} /></div>
                   <div><label style={LABEL_STYLE}>Minimum Stok</label><input type="number" style={INPUT_STYLE} value={part.minStock} onChange={e=>setPart({...part,minStock:Number(e.target.value)})} disabled={!canEdit} /></div>
                   <div><label style={LABEL_STYLE}>Maksimum Stok</label><input type="number" style={INPUT_STYLE} value={part.maxStock} onChange={e=>setPart({...part,maxStock:Number(e.target.value)})} disabled={!canEdit} /></div>
                   <div><label style={LABEL_STYLE}>Depo Lokasyonu</label><input style={INPUT_STYLE} value={part.warehouseLocation} onChange={e=>setPart({...part,warehouseLocation:e.target.value})} disabled={!canEdit} /></div>
