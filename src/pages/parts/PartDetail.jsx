@@ -4,8 +4,9 @@ import { Spinner, EmptyState } from '../../components/ui/Shared';
 import { 
   getPartById, updatePart, getModels, getInventoryBatches, 
   getStockMovements, getQcInspections, getDocuments, getSupplierParts, getPriceHistory,
-  addData
+  addPart, addInventoryBatch, addStockMovement
 } from '../../firebase/firestore';
+import Modal from '../../components/ui/Modal';
 import { 
   PART_CATEGORIES, PART_SUB_CATEGORIES, PART_UNITS, REVISION_STATUSES, STOCK_STATUSES,
   formatNumber, formatDate, formatDateOnly, formatCurrency
@@ -19,14 +20,15 @@ import {
 import toast from 'react-hot-toast';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 
-const TAB_STYLE = (active) => ({ 
+const TAB_STYLE = (active, disabled) => ({ 
   padding: '12px 24px', 
   fontSize: 13, 
   fontWeight: 600, 
   color: active ? '#f1f5f9' : '#64748b', 
   borderBottom: active ? '2px solid #dc2626' : '2px solid transparent', 
   background: 'transparent', 
-  cursor: 'pointer', 
+  cursor: disabled ? 'not-allowed' : 'pointer', 
+  opacity: disabled ? 0.4 : 1,
   transition: 'all 0.2s',
   display: 'flex',
   alignItems: 'center',
@@ -55,6 +57,11 @@ export default function PartDetail() {
   const [docs, setDocs] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [priceHistory, setPriceHistory] = useState([]);
+
+  // Form States
+  const [bomForm, setBomForm] = useState({ partNumber: '', name: '', qty: 1, unit: 'Adet' });
+  const [showLotModal, setShowLotModal] = useState(false);
+  const [lotForm, setLotForm] = useState({ lotNumber: '', quantity: 1, warehouseLocation: '' });
 
   useEffect(() => {
     if (id === 'new') {
@@ -107,17 +114,87 @@ export default function PartDetail() {
     if (!canEdit) return;
     try {
       if (id === 'new') {
-        await addData('parts', part);
+        const docRef = await addPart(part);
         toast.success('Yeni parça başarıyla eklendi');
+        navigate(`/parts/${docRef.id}`);
       } else {
         await updatePart(id, part);
         toast.success('Parça güncellendi');
+        navigate('/parts');
       }
-      navigate('/parts');
     } catch (e) {
       toast.error('Kayıt sırasında hata oluştu');
     }
   };
+
+  const handleTabClick = (tab) => {
+    if (id === 'new' && tab !== 'Genel') {
+      toast.error('Lütfen diğer sekmelere geçmeden önce parçayı kaydedin');
+      return;
+    }
+    setActiveTab(tab);
+  };
+
+  const handleAddBOMComponent = () => {
+    if (!bomForm.partNumber || !bomForm.name) return toast.error('Parça no ve ad zorunludur');
+    const newComponent = { ...bomForm, id: Date.now().toString() };
+    const updatedComponents = [...(part.components || []), newComponent];
+    setPart({ ...part, components: updatedComponents });
+    setBomForm({ partNumber: '', name: '', qty: 1, unit: 'Adet' });
+  };
+
+  const handleRemoveBOMComponent = (compId) => {
+    const updatedComponents = (part.components || []).filter(c => c.id !== compId);
+    setPart({ ...part, components: updatedComponents });
+  };
+
+  const handleAddBatch = async () => {
+    if (!lotForm.lotNumber || !lotForm.quantity) return toast.error('Lot no ve miktar zorunludur');
+    try {
+      const batchData = {
+        partId: id,
+        partNumber: part.partNumber,
+        batchId: lotForm.lotNumber,
+        quantity: Number(lotForm.quantity),
+        remainingQty: Number(lotForm.quantity),
+        warehouseLocation: lotForm.warehouseLocation,
+        receivedDate: new Date().toISOString(),
+        qcStatus: 'Karantina'
+      };
+      await addInventoryBatch(batchData);
+      
+      const movementData = {
+        partId: id,
+        batchId: lotForm.lotNumber,
+        movementType: 'Giriş (Manuel Lot Ekleme)',
+        qty: Number(lotForm.quantity),
+        performedBy: userDoc?.displayName || 'Sistem',
+        referenceNumber: 'MANUEL',
+        createdAt: new Date().toISOString()
+      };
+      await addStockMovement(movementData);
+
+      const newStock = (part.currentStock || 0) + Number(lotForm.quantity);
+      setPart({ ...part, currentStock: newStock });
+      await updatePart(id, { currentStock: newStock });
+
+      toast.success('Lot başarıyla eklendi ve stok güncellendi');
+      setShowLotModal(false);
+      setLotForm({ lotNumber: '', quantity: 1, warehouseLocation: '' });
+      setBatches([{ id: Date.now().toString(), ...batchData }, ...batches]);
+      setMovements([{ id: Date.now().toString(), ...movementData }, ...movements]);
+    } catch (e) {
+      toast.error('Lot eklenirken bir hata oluştu');
+      console.error(e);
+    }
+  };
+
+  const EmptyStateUI = ({ message, action }) => (
+    <div style={{ padding: 40, textAlign: 'center', background: '#0a0f1e', borderRadius: 12, border: '1px dashed #1e293b', width: '100%' }}>
+      <p style={{ color: '#64748b', fontSize: 13, marginBottom: action ? 16 : 0, fontWeight: 600 }}>{message}</p>
+      {action}
+    </div>
+  );
 
   const openNewRevision = () => {
     const reason = prompt('Yeni revizyon açma gerekçesi (ECN):');
@@ -169,12 +246,12 @@ export default function PartDetail() {
 
       {/* TABS NAVIGATION */}
       <div style={{ background: '#0a0f1e', borderBottom: '1px solid #1e293b', display: 'flex', padding: '0 24px' }}>
-        <button style={TAB_STYLE(activeTab==='Genel')} onClick={()=>setActiveTab('Genel')}><Package size={16}/> Genel Bilgiler</button>
-        <button style={TAB_STYLE(activeTab==='BOM')} onClick={()=>setActiveTab('BOM')}><Layers size={16}/> BOM / Ürün Ağacı</button>
-        <button style={TAB_STYLE(activeTab==='Stok')} onClick={()=>setActiveTab('Stok')}><Box size={16}/> Stok & Lot Takibi</button>
-        <button style={TAB_STYLE(activeTab==='Kalite')} onClick={()=>setActiveTab('Kalite')}><ShieldCheck size={16}/> Kalite Geçmişi</button>
-        <button style={TAB_STYLE(activeTab==='TeknikResim')} onClick={()=>setActiveTab('TeknikResim')}><FileText size={16}/> Teknik Resimler</button>
-        <button style={TAB_STYLE(activeTab==='Tedarik')} onClick={()=>setActiveTab('Tedarik')}><ShoppingCart size={16}/> Tedarik</button>
+        <button style={TAB_STYLE(activeTab==='Genel', false)} onClick={()=>handleTabClick('Genel')}><Package size={16}/> Genel Bilgiler</button>
+        <button style={TAB_STYLE(activeTab==='BOM', id === 'new')} onClick={()=>handleTabClick('BOM')}><Layers size={16}/> BOM / Ürün Ağacı</button>
+        <button style={TAB_STYLE(activeTab==='Stok', id === 'new')} onClick={()=>handleTabClick('Stok')}><Box size={16}/> Stok & Lot Takibi</button>
+        <button style={TAB_STYLE(activeTab==='Kalite', id === 'new')} onClick={()=>handleTabClick('Kalite')}><ShieldCheck size={16}/> Kalite Geçmişi</button>
+        <button style={TAB_STYLE(activeTab==='TeknikResim', id === 'new')} onClick={()=>handleTabClick('TeknikResim')}><FileText size={16}/> Teknik Resimler</button>
+        <button style={TAB_STYLE(activeTab==='Tedarik', id === 'new')} onClick={()=>handleTabClick('Tedarik')}><ShoppingCart size={16}/> Tedarik</button>
       </div>
 
       {/* CONTENT AREA */}
@@ -217,12 +294,17 @@ export default function PartDetail() {
                       {PART_UNITS.map(u=><option key={u} value={u}>{u}</option>)}
                     </select>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16, paddingBottom: 8 }}>
+                  <div><label style={LABEL_STYLE}>Revizyon</label><input style={INPUT_STYLE} value={part.revision || 'A'} onChange={e=>setPart({...part,revision:e.target.value})} disabled={!canEdit} /></div>
+                  <div style={{ gridColumn: '1 / -1' }}><label style={LABEL_STYLE}>Açıklama</label><textarea style={{...INPUT_STYLE, height: 60, padding: 8, resize: 'none'}} value={part.description || ''} onChange={e=>setPart({...part,description:e.target.value})} disabled={!canEdit} /></div>
+                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16, paddingBottom: 8, gridColumn: '1 / -1' }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', color: '#e2e8f0', fontSize: 13, fontWeight: 700 }}>
-                      <input type="checkbox" checked={part.isAssembly} onChange={e=>setPart({...part,isAssembly:e.target.checked})} /> BOM Var (Montaj/Grup)
+                      <input type="checkbox" checked={part.isAssembly} onChange={e=>setPart({...part,isAssembly:e.target.checked})} disabled={!canEdit} /> BOM Var (Montaj/Grup)
                     </label>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', color: '#fbbf24', fontSize: 13, fontWeight: 700 }}>
-                      <input type="checkbox" checked={part.isCritical} onChange={e=>setPart({...part,isCritical:e.target.checked})} /> Kritik Parça
+                      <input type="checkbox" checked={part.isCritical} onChange={e=>setPart({...part,isCritical:e.target.checked})} disabled={!canEdit} /> Kritik Parça
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', color: '#34d399', fontSize: 13, fontWeight: 700 }}>
+                      <input type="checkbox" checked={part.isActive !== false} onChange={e=>setPart({...part,isActive:e.target.checked})} disabled={!canEdit} /> Aktif Parça
                     </label>
                   </div>
                 </div>
@@ -299,18 +381,38 @@ export default function PartDetail() {
                       </tr>
                     </thead>
                     <tbody>
+                      <tr style={{ background: '#111827', borderBottom: '2px solid #1e293b' }}>
+                        <td style={TD}>*</td>
+                        <td style={{ ...TD, padding: '8px' }}>
+                          <input style={{...INPUT_STYLE, padding: '6px 10px'}} placeholder="Parça No" value={bomForm.partNumber} onChange={e=>setBomForm({...bomForm, partNumber:e.target.value})} disabled={!canEdit}/>
+                        </td>
+                        <td style={{ ...TD, padding: '8px' }}>
+                          <input style={{...INPUT_STYLE, padding: '6px 10px'}} placeholder="Ad" value={bomForm.name} onChange={e=>setBomForm({...bomForm, name:e.target.value})} disabled={!canEdit}/>
+                        </td>
+                        <td style={{ ...TD, padding: '8px' }}>
+                          <input type="number" style={{...INPUT_STYLE, padding: '6px 10px', textAlign: 'right'}} min="0.1" step="any" value={bomForm.qty} onChange={e=>setBomForm({...bomForm, qty:e.target.value})} disabled={!canEdit}/>
+                        </td>
+                        <td style={{ ...TD, padding: '8px' }}>
+                          <select style={{...INPUT_STYLE, padding: '6px 10px'}} value={bomForm.unit} onChange={e=>setBomForm({...bomForm, unit:e.target.value})} disabled={!canEdit}>
+                            {PART_UNITS.map(u=><option key={u} value={u}>{u}</option>)}
+                          </select>
+                        </td>
+                        <td style={{ ...TD, padding: '8px' }}>
+                          <button onClick={handleAddBOMComponent} disabled={!canEdit} style={{ width: 32, height: 32, background: '#3b82f6', border: 'none', borderRadius: 6, color: '#fff', cursor: canEdit ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={16} strokeWidth={3} /></button>
+                        </td>
+                      </tr>
                       {(!part.components || part.components.length === 0) ? (
-                        <tr><td colSpan={6} style={{ padding: 40, textAlign: 'center', color: '#475569', fontSize: 13 }}>Henüz alt parça eklenmedi.</td></tr>
+                        <tr><td colSpan={6} style={{ padding: 40, textAlign: 'center', color: '#475569', fontSize: 13 }}><EmptyStateUI message="BOM'a henüz montaj parçası eklenmemiş." /></td></tr>
                       ) : (
                         part.components.map((c, idx) => (
-                          <tr key={idx}>
+                          <tr key={c.id || idx}>
                             <td style={TD}>{idx + 1}</td>
                             <td style={{ ...TD, fontWeight: 700, color: '#f1f5f9', fontFamily: 'monospace' }}>{c.partNumber}</td>
                             <td style={TD}>{c.name}</td>
                             <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: '#f1f5f9' }}>{c.qty}</td>
                             <td style={TD}>{c.unit || 'Adet'}</td>
                             <td style={TD}>
-                              <button style={{ background: 'transparent', border: 'none', color: '#450a0a', cursor: 'pointer' }}><Trash2 size={14}/></button>
+                              <button onClick={() => handleRemoveBOMComponent(c.id)} style={{ background: 'transparent', border: 'none', color: '#450a0a', cursor: 'pointer' }}><Trash2 size={14}/></button>
                             </td>
                           </tr>
                         ))
@@ -354,7 +456,12 @@ export default function PartDetail() {
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 400px', gap: 24, maxWidth: 1600, margin: '0 auto' }}>
             <div className="main">
               <div style={CARD_STYLE}>
-                <h3 style={{ fontSize: 15, fontWeight: 800, color: '#e2e8f0', margin: '0 0 20px' }}>Aktif Lot / Batch Listesi</h3>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 800, color: '#e2e8f0', margin: 0 }}>Aktif Lot / Batch Listesi</h3>
+                  <button onClick={() => setShowLotModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, height: 32, padding: '0 12px', background: '#3b82f6', border: 'none', borderRadius: 4, color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                    <Plus size={14} /> Lot Girişi Yap
+                  </button>
+                </div>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr>
@@ -502,7 +609,7 @@ export default function PartDetail() {
                 </thead>
                 <tbody>
                    {inspections.length === 0 ? (
-                      <tr><td colSpan={6} style={{ padding: 40, textAlign: 'center', color: '#475569', fontSize: 13 }}>Muayene kaydı bulunmuyor.</td></tr>
+                      <tr><td colSpan={6} style={{ padding: 40, textAlign: 'center' }}><EmptyStateUI message="Bu parça için muayene kaydı bulunmuyor." /></td></tr>
                    ) : (
                      inspections.map(i => (
                        <tr key={i.id}>
@@ -589,7 +696,7 @@ export default function PartDetail() {
                      </thead>
                      <tbody>
                        {suppliers.length === 0 ? (
-                         <tr><td colSpan={5} style={{ padding: 40, textAlign: 'center', color: '#475569', fontSize: 13 }}>Bu parça için tedarikçi tanımı bulunmuyor.</td></tr>
+                         <tr><td colSpan={5} style={{ padding: 40, textAlign: 'center' }}><EmptyStateUI message="Bu parça için tedarikçi tanımı bulunmuyor." /></td></tr>
                        ) : (
                          suppliers.map(s => (
                            <tr key={s.id}>
@@ -655,6 +762,31 @@ export default function PartDetail() {
         )}
 
       </div>
+
+      {/* LOT ENTRY MODAL */}
+      <Modal isOpen={showLotModal} onClose={() => setShowLotModal(false)} title="Yeni Lot / Batch Girişi">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div>
+            <label style={LABEL_STYLE}>Lot Numarası <span style={{color: '#f87171'}}>*</span></label>
+            <input style={INPUT_STYLE} placeholder="Örn: 2026-A-001" value={lotForm.lotNumber} onChange={e=>setLotForm({...lotForm, lotNumber:e.target.value})} autoFocus />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div>
+              <label style={LABEL_STYLE}>Miktar <span style={{color: '#f87171'}}>*</span></label>
+              <input type="number" min="0.1" step="any" style={INPUT_STYLE} value={lotForm.quantity} onChange={e=>setLotForm({...lotForm, quantity:e.target.value})} />
+            </div>
+            <div>
+              <label style={LABEL_STYLE}>Depo Lokasyonu</label>
+              <input style={INPUT_STYLE} placeholder="Örn: B1-R1-05" value={lotForm.warehouseLocation} onChange={e=>setLotForm({...lotForm, warehouseLocation:e.target.value})} />
+            </div>
+          </div>
+          <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+            <button onClick={() => setShowLotModal(false)} style={{ background: 'transparent', color: '#f1f5f9', border: '1px solid #1e293b', padding: '10px 16px', borderRadius: 8, cursor: 'pointer' }}>İptal</button>
+            <button onClick={handleAddBatch} style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '10px 16px', borderRadius: 8, fontWeight: 700, cursor: 'pointer' }}>Lotu Kaydet</button>
+          </div>
+        </div>
+      </Modal>
+
     </div>
   );
 }

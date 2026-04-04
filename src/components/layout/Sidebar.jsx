@@ -5,7 +5,7 @@ import { logoutUser } from '../../firebase/auth';
 import { ROLE_LABELS } from '../../utils/helpers';
 import {
   LayoutDashboard, Package, ArrowLeftRight, Crosshair,
-  ClipboardList, FileText, Users, LogOut, ShieldCheck, 
+  ClipboardList, FileText, Users, LogOut, ShieldCheck,
   ShoppingCart, ListOrdered, FileSpreadsheet, Truck, FileCheck, Building2,
   ChevronDown, ChevronRight, Binary, Settings, ShieldAlert, Cpu, HardDrive
 } from 'lucide-react';
@@ -13,7 +13,7 @@ import {
 const SECTIONS = [
   {
     id: 'engineering',
-    label: 'Mühendislik (PLM)',
+    label: 'Malzeme Yönetimi',
     icon: Binary,
     roles: ['admin', 'engineer', 'warehouse', 'kalite', 'viewer'],
     items: [
@@ -71,12 +71,12 @@ const SECTIONS = [
 export default function Sidebar() {
   const { role, user, userDoc } = useAuth();
   const navigate = useNavigate();
-  
+
   // Default open state for critical sections
-  const [openSections, setOpenSections] = useState({ 
-    engineering: true, 
-    production: true, 
-    quality: false, 
+  const [openSections, setOpenSections] = useState({
+    engineering: true,
+    production: true,
+    quality: false,
     purchasing: false,
     docs: false
   });
@@ -125,70 +125,70 @@ export default function Sidebar() {
 
         {SECTIONS.filter(s => isAllowed(s.roles)).map(section => (
           <div key={section.id} style={{ marginBottom: 6 }}>
-             <button
-                onClick={() => toggleSection(section.id)}
-                style={{
-                  width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  height: 38, padding: '0 12px', border: 'none', background: 'transparent',
-                  color: openSections[section.id] ? '#f1f5f9' : '#475569', 
-                  fontSize: 11, fontWeight: 800, textTransform: 'uppercase',
-                  letterSpacing: 1, cursor: 'pointer', outline: 'none'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <section.icon size={14} color={openSections[section.id] ? '#dc2626' : '#475569'} />
-                  <span>{section.label}</span>
-                </div>
-                {openSections[section.id] ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-              </button>
-              
-              {openSections[section.id] && (
-                <div style={{ paddingLeft: 8, marginTop: 4 }}>
-                  {section.items.map(item => (
-                    <NavLink
-                      key={item.to}
-                      to={item.to}
-                      style={({ isActive }) => ({
-                        display: 'flex', alignItems: 'center', gap: 12,
-                        height: 34, padding: '0 16px', marginBottom: 2,
-                        borderRadius: 6,
-                        background: isActive ? 'rgba(220, 38, 38, 0.1)' : 'transparent',
-                        color: isActive ? '#dc2626' : '#94a3b8',
-                        fontSize: 13, fontWeight: 600, textDecoration: 'none',
-                        transition: 'all 0.2s'
-                      })}
-                    >
-                      {({ isActive }) => (
-                        <>
-                          <item.icon size={16} strokeWidth={isActive ? 2.5 : 1.5} />
-                          <span>{item.label}</span>
-                        </>
-                      )}
-                    </NavLink>
-                  ))}
-                </div>
-              )}
+            <button
+              onClick={() => toggleSection(section.id)}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                height: 38, padding: '0 12px', border: 'none', background: 'transparent',
+                color: openSections[section.id] ? '#f1f5f9' : '#475569',
+                fontSize: 11, fontWeight: 800, textTransform: 'uppercase',
+                letterSpacing: 1, cursor: 'pointer', outline: 'none'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <section.icon size={14} color={openSections[section.id] ? '#dc2626' : '#475569'} />
+                <span>{section.label}</span>
+              </div>
+              {openSections[section.id] ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            </button>
+
+            {openSections[section.id] && (
+              <div style={{ paddingLeft: 8, marginTop: 4 }}>
+                {section.items.map(item => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    style={({ isActive }) => ({
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      height: 34, padding: '0 16px', marginBottom: 2,
+                      borderRadius: 6,
+                      background: isActive ? 'rgba(220, 38, 38, 0.1)' : 'transparent',
+                      color: isActive ? '#dc2626' : '#94a3b8',
+                      fontSize: 13, fontWeight: 600, textDecoration: 'none',
+                      transition: 'all 0.2s'
+                    })}
+                  >
+                    {({ isActive }) => (
+                      <>
+                        <item.icon size={16} strokeWidth={isActive ? 2.5 : 1.5} />
+                        <span>{item.label}</span>
+                      </>
+                    )}
+                  </NavLink>
+                ))}
+              </div>
+            )}
           </div>
         ))}
 
         {role === 'admin' && (
-           <div style={{ marginTop: 24, borderTop: '1px solid #1e293b', paddingTop: 12 }}>
-              <p style={{ padding: '0 16px', fontSize: 10, fontWeight: 800, color: '#334155', textTransform: 'uppercase', marginBottom: 8 }}>Sistem</p>
-              <NavLink
-                to="/admin/users"
-                style={({ isActive }) => ({
-                  display: 'flex', alignItems: 'center', gap: 12,
-                  height: 40, padding: '0 16px',
-                  borderRadius: 8,
-                  background: isActive ? '#dc2626' : 'transparent',
-                  color: isActive ? '#fff' : '#94a3b8',
-                  fontSize: 13, fontWeight: 700, textDecoration: 'none',
-                })}
-              >
-                <Users size={18} />
-                <span>Kullanıcı Yönetimi</span>
-              </NavLink>
-           </div>
+          <div style={{ marginTop: 24, borderTop: '1px solid #1e293b', paddingTop: 12 }}>
+            <p style={{ padding: '0 16px', fontSize: 10, fontWeight: 800, color: '#334155', textTransform: 'uppercase', marginBottom: 8 }}>Sistem</p>
+            <NavLink
+              to="/admin/users"
+              style={({ isActive }) => ({
+                display: 'flex', alignItems: 'center', gap: 12,
+                height: 40, padding: '0 16px',
+                borderRadius: 8,
+                background: isActive ? '#dc2626' : 'transparent',
+                color: isActive ? '#fff' : '#94a3b8',
+                fontSize: 13, fontWeight: 700, textDecoration: 'none',
+              })}
+            >
+              <Users size={18} />
+              <span>Kullanıcı Yönetimi</span>
+            </NavLink>
+          </div>
         )}
       </nav>
 
