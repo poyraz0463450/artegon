@@ -43,6 +43,15 @@ import Invoices from './pages/purchasing/Invoices';
 import CycleCounts from './pages/inventory/CycleCounts';
 import Traceability from './pages/inventory/Traceability';
 
+// Module 7: Sales & CRM
+import CustomersList from './pages/sales/CustomersList';
+import SalesOrders from './pages/sales/SalesOrders';
+import Shipping from './pages/sales/Shipping';
+
+// Module 8: Financials
+import UnitCosting from './pages/sales/UnitCosting';
+import SalesInvoices from './pages/sales/Invoices';
+
 // Admin
 import UserManagement from './pages/admin/UserManagement';
 
@@ -83,7 +92,7 @@ function AppRoutes() {
       <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route index element={<Dashboard />} />
         
-        {/* Mühendislik (PLM) */}
+        {/* Malzeme Yönetimi */}
         <Route path="parts" element={<PartsList />} />
         <Route path="parts/:id" element={<PartDetail />} />
         <Route path="models" element={<ModelsList />} />
@@ -130,6 +139,10 @@ function AppRoutes() {
         <Route path="sales/customers" element={<CustomersList />} />
         <Route path="sales/orders" element={<SalesOrders />} />
         <Route path="sales/shipping" element={<Shipping />} />
+
+        {/* Finansal Analiz */}
+        <Route path="financials/invoices" element={<SalesInvoices />} />
+        <Route path="financials/costing" element={<UnitCosting />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

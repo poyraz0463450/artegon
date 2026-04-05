@@ -77,8 +77,8 @@ export default function PartsList() {
       {/* Header & Stats */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 800, color: '#fff', margin: 0, letterSpacing: '-0.02em' }}>Parçalar & Stok Yönetimi</h1>
-          <p style={{ color: '#475569', fontSize: 13, marginTop: 4 }}>Merkezi parça kütüphanesi ve envanter kontrol sistemi</p>
+          <h1 style={{ fontSize: 24, fontWeight: 800, color: '#fff', margin: 0, letterSpacing: '-0.02em' }}>Malzeme Yönetimi & Stok</h1>
+          <p style={{ color: '#475569', fontSize: 13, marginTop: 4 }}>Merkezi malzeme kütüphanesi ve envanter kontrol sistemi</p>
         </div>
         <div style={{ display: 'flex', gap: 12 }}>
           <button onClick={load} style={{ ...INPUT, width: 'auto', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>

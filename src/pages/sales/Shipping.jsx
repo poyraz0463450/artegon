@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Spinner, EmptyState } from '../../components/ui/Shared';
 import { 
   getSalesOrders, updateSalesOrder, addShipment, 
-  getBatchesByPart, updateInventoryBatch, addStockMovement, updatePart, getParts
+  getBatchesByPart, updateInventoryBatch, addStockMovement, updatePart, getParts,
+  addInvoice 
 } from '../../firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
 import { 
@@ -82,7 +83,7 @@ export default function Shipping() {
        await updateSalesOrder(selectedOrder.id, { status: 'Shipped', shippedDate: new Date().toISOString() });
 
        // 5. Create Shipment Record (ASN Out)
-       await addShipment({
+       const shipmentData = {
           soId: selectedOrder.id,
           soNumber: selectedOrder.soNumber,
           customerName: selectedOrder.customerName,
@@ -90,9 +91,24 @@ export default function Shipping() {
           quantity: selectedOrder.quantity,
           lotNumber: batch.lotNumber,
           shippedAt: new Date().toISOString()
+       };
+       await addShipment(shipmentData);
+
+       // 6. Auto-Create Invoice
+       await addInvoice({
+          invoiceNo: `INV-${Date.now().toString().slice(-6)}`,
+          soId: selectedOrder.id,
+          customerName: selectedOrder.customerName,
+          partNumber: selectedOrder.productPartNumber,
+          quantity: selectedOrder.quantity,
+          unitPrice: selectedOrder.unitPrice || 0,
+          totalAmount: (selectedOrder.unitPrice || 0) * selectedOrder.quantity,
+          currency: selectedOrder.currency || 'USD',
+          paymentStatus: 'Pending',
+          invoiceDate: new Date().toISOString()
        });
 
-       toast.success('Sevkiyat tamamlandı!', { id: 'ship' });
+       toast.success('Sevkiyat ve Fatura tamamlandı!', { id: 'ship' });
        setSelectedOrder(null);
        load();
     } catch (e) {

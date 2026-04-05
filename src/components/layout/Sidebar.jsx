@@ -9,17 +9,17 @@ import {
   ClipboardList, FileText, Users, LogOut, ShieldCheck,
   ShoppingCart, ListOrdered, FileSpreadsheet, Truck, FileCheck, Building2,
   ChevronDown, ChevronRight, Binary, Settings, ShieldAlert, Cpu, HardDrive,
-  ShoppingBag, Handshake
+  ShoppingBag, Handshake, Landmark, Receipt, Calculator 
 } from 'lucide-react';
 
 const SECTIONS = [
   {
     id: 'engineering',
-    label: 'Mühendislik (PLM)',
+    label: 'Malzeme Yönetimi',
     icon: Binary,
     roles: ['admin', 'engineer', 'warehouse', 'kalite', 'viewer'],
     items: [
-      { to: '/parts', label: 'Parça Master', icon: Package, badgeId: 'criticalStock' },
+      { to: '/parts', label: 'Parça Master (Kütüphane)', icon: Package, badgeId: 'criticalStock' },
       { to: '/models', label: 'CAD Modeller', icon: Crosshair },
     ]
   },
@@ -76,6 +76,16 @@ const SECTIONS = [
     ]
   },
   {
+    id: 'finance',
+    label: 'Finansal Analiz',
+    icon: Landmark,
+    roles: ['admin', 'finance'],
+    items: [
+      { to: '/financials/invoices', label: 'Faturalar (AR)', icon: Receipt },
+      { to: '/financials/costing', label: 'Birim Maliyet (COGS)', icon: Calculator },
+    ]
+  },
+  {
     id: 'production',
     label: 'Üretim (MES)',
     icon: ClipboardList,
@@ -106,6 +116,8 @@ export default function Sidebar() {
   const [openSections, setOpenSections] = useState({
     engineering: true,
     production: true,
+    sales: false,
+    finance: false,
     quality: false,
     purchasing: false,
     docs: false

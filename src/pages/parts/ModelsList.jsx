@@ -136,7 +136,7 @@ export default function ModelsList() {
               <th style={TH}>Açıklama</th>
               <th style={TH}>Durum</th>
               <th style={{ ...TH, textAlign: 'right' }}>Max Üretim Kapasitesi</th>
-              <th style={{ ...TH, width: 80 }}></th>
+              <th style={{ ...TH, width: 120 }}></th>
             </tr>
           </thead>
           <tbody>
@@ -173,14 +173,20 @@ export default function ModelsList() {
                     </div>
                   </td>
                   <td style={{ ...TD, textAlign: 'right' }}>
-                    <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setDetailModel(m); }}
+                        style={{ height: 32, padding: '0 8px', borderRadius: 6, border: '1px solid #1e293b', background: '#0a0f1e', color: '#60a5fa', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}
+                      >
+                        <ExternalLink size={12} /> Gör
+                      </button>
                       {!isReadOnly && (
-                        <button onClick={(e) => { e.stopPropagation(); setEditId(m.id); setForm(m); setModal(true); }} style={{ height: 32, width: 32, borderRadius: 6, border: 'none', background: 'transparent', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <button onClick={(e) => { e.stopPropagation(); setEditId(m.id); setForm(m); setModal(true); }} style={{ height: 32, width: 32, borderRadius: 6, border: '1px solid #1e293b', background: '#0a0f1e', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           <Pencil size={14} />
                         </button>
                       )}
                       {isAdmin && (
-                        <button onClick={(e) => { e.stopPropagation(); handleDelete(m.id); }} style={{ height: 32, width: 32, borderRadius: 6, border: 'none', background: 'transparent', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <button onClick={(e) => { e.stopPropagation(); handleDelete(m.id); }} style={{ height: 32, width: 32, borderRadius: 6, border: '1px solid #1e293b', background: '#0a0f1e', color: '#450a0a', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           <Trash2 size={14} />
                         </button>
                       )}
@@ -248,7 +254,7 @@ export default function ModelsList() {
               </table>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
-                <button onClick={() => setDetailModel(null)} style={{ height: 40, padding: '0 24px', background: '#dc2626', border: 'none', borderRadius: 8, color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Kapat</button>
+                <button onClick={() => setDetailModel(null)} style={{ height: 40, padding: '0 24px', background: '#1e293b', border: 'none', borderRadius: 8, color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Kapat</button>
             </div>
           </div>
         </Modal>

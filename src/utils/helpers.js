@@ -78,7 +78,7 @@ export const DOC_STATUSES = ['Taslak', 'İncelemede', 'Onaylandı', 'Pasif', 'İ
 
 export const ROLE_LABELS = {
   admin: 'Sistem Yöneticisi',
-  engineer: 'Mühendis (PLM)',
+  engineer: 'Malzeme Yöneticisi (PLM)',
   warehouse: 'Depo Sorumlusu',
   kalite: 'Kalite (QMS)',
   operator: 'Üretim Operatörü',
