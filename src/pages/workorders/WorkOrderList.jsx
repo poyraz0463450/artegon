@@ -5,9 +5,11 @@ import {
   getWorkOrders, getParts, updateWorkOrder, addWorkOrder, getWorkCenters 
 } from '../../firebase/firestore';
 import { 
-  WO_STATUS_FLOW, formatDate, formatNumber, generateWONumber 
+  WO_STATUS_FLOW, formatDate, formatNumber 
 } from '../../utils/helpers';
+import { generateWorkOrderNumber } from '../../utils/autoGen';
 import { useAuth } from '../../context/AuthContext';
+import Modal from '../../components/ui/Modal';
 import { 
   Plus, Search, Filter, LayoutGrid, List, ChevronRight, 
   Clock, PlayCircle, CheckCircle2, AlertCircle, Calendar, Hash
@@ -106,7 +108,7 @@ function KanbanColumn({ id, title, orders, onCardClick, color }) {
 // ── MAIN COMPONENT ──────────────────────────────────────────────────────────
 
 export default function WorkOrderList() {
-  const { isAdmin, isEngineer } = useAuth();
+  const { isAdmin, isEngineer, userDoc } = useAuth();
   const navigate = useNavigate();
   const canEdit = isAdmin || isEngineer;
 
@@ -114,6 +116,24 @@ export default function WorkOrderList() {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('kanban'); // 'list' or 'kanban'
   const [search, setSearch] = useState('');
+  
+  // New Work Order Modal State
+  const [modal, setModal] = useState(false);
+  const [parts, setParts] = useState([]);
+  const [models, setModels] = useState([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [form, setForm] = useState({
+    woNumber: '',
+    productId: '',
+    productName: '',
+    modelId: '',
+    modelCode: '',
+    quantity: 1,
+    plannedStart: new Date().toISOString().slice(0, 16),
+    plannedEnd: new Date(Date.now() + 86400000 * 7).toISOString().slice(0, 16),
+    priority: 'Normal',
+    responsibleEngineer: ''
+  });
   
   // DnD State
   const [activeId, setActiveId] = useState(null);
@@ -127,12 +147,58 @@ export default function WorkOrderList() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await getWorkOrders();
-      setOrders(res.docs.map(d => ({ id: d.id, ...d.data() })));
+      const [woRes, pRes, mRes] = await Promise.all([
+        getWorkOrders(),
+        getParts(),
+        getModels()
+      ]);
+      setOrders(woRes.docs.map(d => ({ id: d.id, ...d.data() })));
+      setParts(pRes.docs.map(d => ({ id: d.id, ...d.data() })));
+      setModels(mRes.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (e) {
-      toast.error('İş emirleri yüklenemedi');
+      toast.error('Veriler yüklenemedi');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openNewModal = async () => {
+    setIsGenerating(true);
+    try {
+      const nextId = await generateWorkOrderNumber();
+      setForm({ ...form, woNumber: nextId, responsibleEngineer: userDoc?.displayName || '' });
+      setModal(true);
+    } catch (err) {
+      toast.error('İş emri numarası üretilemedi');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleCreateWO = async (e) => {
+    e.preventDefault();
+    if (!form.productId || !form.quantity) return toast.error('Ürün ve miktar zorunludur');
+    
+    try {
+      const selectedPart = parts.find(p => p.id === form.productId);
+      const selectedModel = models.find(m => m.id === form.modelId);
+      
+      const woData = {
+        ...form,
+        productName: selectedPart?.name || '',
+        productNumber: selectedPart?.partNumber || '',
+        modelCode: selectedModel?.modelCode || '',
+        status: 'Taslak',
+        createdAt: new Date().toISOString(),
+        createdBy: userDoc?.displayName || 'Sistem'
+      };
+      
+      const docRef = await addWorkOrder(woData);
+      toast.success('İş emri başarıyla oluşturuldu');
+      setModal(false);
+      navigate(`/work-orders/${docRef.id}`);
+    } catch (err) {
+      toast.error('İş emri oluşturulamadı');
     }
   };
 
@@ -192,8 +258,8 @@ export default function WorkOrderList() {
              <button onClick={() => setView('list')} style={{ width: 36, height: 32, borderRadius: 6, border: 'none', background: view==='list'?'#1e293b':'transparent', color: view==='list'?'#f1f5f9':'#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><List size={16}/></button>
           </div>
           {canEdit && (
-            <button onClick={() => navigate('/parts')} style={{ display: 'flex', alignItems: 'center', gap: 8, height: 40, padding: '0 20px', background: '#dc2626', border: 'none', borderRadius: 8, color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(220, 38, 38, 0.3)' }}>
-              <Plus size={18} strokeWidth={2.5} /> Yeni Üretim Emri
+            <button onClick={openNewModal} disabled={isGenerating} style={{ display: 'flex', alignItems: 'center', gap: 8, height: 40, padding: '0 20px', background: '#dc2626', border: 'none', borderRadius: 8, color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(220, 38, 38, 0.3)' }}>
+              <Plus size={18} strokeWidth={2.5} /> {isGenerating ? 'Hazırlanıyor...' : 'Yeni Üretim Emri'}
             </button>
           )}
         </div>
@@ -265,6 +331,69 @@ export default function WorkOrderList() {
           </div>
         )}
       </div>
+
+      {/* NEW WORK ORDER MODAL */}
+      <Modal open={modal} onClose={() => setModal(false)} title="Yeni Üretim Emri Oluştur" width={600}>
+        <form onSubmit={handleCreateWO} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+             <div>
+                <label style={{ ...TH, border: 'none', padding: '0 0 6px', display: 'block' }}>İş Emri No</label>
+                <input style={{ ...INPUT, fontWeight: 800, color: '#3b82f6' }} value={form.woNumber} readOnly />
+             </div>
+             <div>
+                <label style={{ ...TH, border: 'none', padding: '0 0 6px', display: 'block' }}>Sorumlu Mühendis</label>
+                <input style={INPUT} value={form.responsibleEngineer} onChange={e=>setForm({...form, responsibleEngineer: e.target.value})} />
+             </div>
+          </div>
+
+          <div>
+             <label style={{ ...TH, border: 'none', padding: '0 0 6px', display: 'block' }}>Üretilecek Ürün (Parça)</label>
+             <select style={{ ...INPUT, cursor: 'pointer' }} value={form.productId} onChange={e=>setForm({...form, productId: e.target.value})} required>
+                <option value="">Ürün Seçiniz...</option>
+                {parts.map(p => <option key={p.id} value={p.id}>{p.partNumber} — {p.name}</option>)}
+             </select>
+          </div>
+
+          <div>
+             <label style={{ ...TH, border: 'none', padding: '0 0 6px', display: 'block' }}>İlgili Silah Modeli</label>
+             <select style={{ ...INPUT, cursor: 'pointer' }} value={form.modelId} onChange={e=>setForm({...form, modelId: e.target.value})}>
+                <option value="">Model Seçiniz...</option>
+                {models.map(m => <option key={m.id} value={m.id}>{m.modelCode} — {m.modelName}</option>)}
+             </select>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+             <div>
+                <label style={{ ...TH, border: 'none', padding: '0 0 6px', display: 'block' }}>Üretim Miktarı</label>
+                <input type="number" min="1" style={INPUT} value={form.quantity} onChange={e=>setForm({...form, quantity: Number(e.target.value)})} required />
+             </div>
+             <div>
+                <label style={{ ...TH, border: 'none', padding: '0 0 6px', display: 'block' }}>Öncelik</label>
+                <select style={{ ...INPUT, cursor: 'pointer' }} value={form.priority} onChange={e=>setForm({...form, priority: e.target.value})}>
+                   <option value="Normal">Normal</option>
+                   <option value="Yüksek">Yüksek</option>
+                   <option value="Acil">Acil</option>
+                </select>
+             </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+             <div>
+                <label style={{ ...TH, border: 'none', padding: '0 0 6px', display: 'block' }}>Planlanan Başlangıç</label>
+                <input type="datetime-local" style={INPUT} value={form.plannedStart} onChange={e=>setForm({...form, plannedStart: e.target.value})} />
+             </div>
+             <div>
+                <label style={{ ...TH, border: 'none', padding: '0 0 6px', display: 'block' }}>Planlanan Bitiş</label>
+                <input type="datetime-local" style={INPUT} value={form.plannedEnd} onChange={e=>setForm({...form, plannedEnd: e.target.value})} />
+             </div>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 12 }}>
+             <button type="button" onClick={() => setModal(false)} style={{ height: 40, padding: '0 24px', background: 'transparent', border: '1px solid #1e293b', borderRadius: 8, color: '#64748b', fontWeight: 600, cursor: 'pointer' }}>İptal</button>
+             <button type="submit" style={{ height: 40, padding: '0 32px', background: '#dc2626', border: 'none', borderRadius: 8, color: 'white', fontWeight: 800, cursor: 'pointer' }}>Üretim Emrini Yayınla</button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

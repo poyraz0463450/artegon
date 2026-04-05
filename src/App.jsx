@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard';
 import PartsList from './pages/parts/PartsList';
 import PartDetail from './pages/parts/PartDetail';
 import ModelsList from './pages/parts/ModelsList';
+import ModelDetail from './pages/parts/ModelDetail';
 import StockMovements from './pages/parts/StockMovements';
 
 // Module 2: MES
@@ -96,6 +97,7 @@ function AppRoutes() {
         <Route path="parts" element={<PartsList />} />
         <Route path="parts/:id" element={<PartDetail />} />
         <Route path="models" element={<ModelsList />} />
+        <Route path="models/:id" element={<ModelDetail />} />
         <Route path="stock-movements" element={<StockMovements />} />
         
         {/* Üretim (MES) */}

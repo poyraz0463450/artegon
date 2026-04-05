@@ -72,6 +72,42 @@ export default function MRPDashboard() {
     }
   };
 
+  const exportCSV = () => {
+    if (filteredParts.length === 0) return toast.error('Dışa aktarılacak veri bulunamadı');
+    
+    const headers = [
+      'Parça No', 'Parça Adı', 'Mevcut Stok', 'Birim', 'Reorder Point (RP)', 
+      'Lead Time (Gün)', 'Günlük Tüketim', 'Kalan Gün (Tahmin)', 'Durum'
+    ];
+    
+    const rows = filteredParts.map(p => {
+      const isCritical = p.reorderPoint > 0 && p.currentStock <= p.reorderPoint;
+      const daysRemaining = p.avgDailyConsumption > 0 ? Math.floor(p.currentStock / p.avgDailyConsumption) : '∞';
+      return [
+        p.partNumber, p.name, p.currentStock || 0, p.unit || 'Adet', p.reorderPoint || 0,
+        p.leadTimeDays || 0, p.avgDailyConsumption || 0, daysRemaining,
+        isCritical ? 'KRİTİK' : 'NORMAL'
+      ];
+    });
+
+    const csvContent = "\uFEFF" + [
+      headers.join(';'),
+      ...rows.map(row => row.join(';'))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Artegon_MRP_Raporu_${new Date().toISOString().slice(0,10)}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    toast.success('MRP Raporu indirildi');
+  };
+
   const stats = useMemo(() => {
     const critical = parts.filter(p => p.reorderPoint > 0 && p.currentStock <= p.reorderPoint).length;
     const warning = parts.filter(p => p.reorderPoint > 0 && p.currentStock <= p.reorderPoint * 1.5 && p.currentStock > p.reorderPoint).length;
@@ -140,7 +176,7 @@ export default function MRPDashboard() {
               <option value="warning">Sadece Riskli</option>
             </select>
           </div>
-          <button style={{ display: 'flex', alignItems: 'center', gap: 8, height: 38, padding: '0 16px', background: '#0d1117', border: '1px solid #334155', borderRadius: 8, color: '#94a3b8', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+          <button onClick={exportCSV} style={{ display: 'flex', alignItems: 'center', gap: 8, height: 38, padding: '0 16px', background: '#0d1117', border: '1px solid #334155', borderRadius: 8, color: '#94a3b8', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
             <Download size={16} /> Excel İndir
           </button>
         </div>

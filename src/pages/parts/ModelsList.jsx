@@ -1,5 +1,5 @@
-import { useEffect, useState, useMemo } from 'react';
 import { Spinner, EmptyState } from '../../components/ui/Shared';
+import { useNavigate } from 'react-router-dom';
 import { getModels, addModel, updateModel, deleteModel, getParts } from '../../firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
 import { 
@@ -15,6 +15,7 @@ const TD = { padding: '0 16px', height: 52, fontSize: 13, color: '#94a3b8', bord
 const INPUT = { width: '100%', height: 38, padding: '0 12px', background: '#0a0f1e', border: '1px solid #334155', borderRadius: 6, color: '#e2e8f0', fontSize: 13, outline: 'none' };
 
 export default function ModelsList() {
+  const navigate = useNavigate();
   const { isAdmin, isEngineer, isWarehouse, role } = useAuth();
   const canEdit = isAdmin || isEngineer;
   const isReadOnly = isWarehouse || role === 'viewer';
@@ -28,7 +29,6 @@ export default function ModelsList() {
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState({ modelCode: '', modelName: '', description: '', isActive: true });
   
-  const [detailModel, setDetailModel] = useState(null);
   const [search, setSearch] = useState('');
 
   useEffect(() => { load(); }, []);
@@ -146,7 +146,7 @@ export default function ModelsList() {
               return (
                 <tr 
                   key={m.id} 
-                  onClick={() => setDetailModel(m)}
+                  onClick={() => navigate(`/models/${m.id}`)}
                   style={{ cursor: 'pointer' }}
                   onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
@@ -175,7 +175,7 @@ export default function ModelsList() {
                   <td style={{ ...TD, textAlign: 'right' }}>
                     <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                       <button 
-                        onClick={(e) => { e.stopPropagation(); setDetailModel(m); }}
+                        onClick={(e) => { e.stopPropagation(); navigate(`/models/${m.id}`); }}
                         style={{ height: 32, padding: '0 8px', borderRadius: 6, border: '1px solid #1e293b', background: '#0a0f1e', color: '#60a5fa', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}
                       >
                         <ExternalLink size={12} /> Gör
@@ -199,66 +199,7 @@ export default function ModelsList() {
         </table>
       </div>
 
-      {/* DETAIL MODAL */}
-      {detailModel && (
-        <Modal open={!!detailModel} onClose={() => setDetailModel(null)} title={`${detailModel.modelCode} - Parça İhtiyaç Listesi`} width={900}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-            <div style={{ background: '#0a0f1e', padding: 20, borderRadius: 12, border: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-               <div>
-                  <h4 style={{ margin: 0, color: '#fff', fontSize: 15, fontWeight: 800 }}>Mevcut Üretim Kapasitesi</h4>
-                  <p style={{ margin: '4px 0 0', color: '#475569', fontSize: 12 }}>Stoklardaki parçalara göre üretilebilecek net miktar</p>
-               </div>
-               <div style={{ textAlign: 'right' }}>
-                  <span style={{ fontSize: 32, fontWeight: 900, color: '#34d399' }}>{calcMaxProduction(getModelParts(detailModel.id))}</span>
-                  <span style={{ fontSize: 12, color: '#475569', marginLeft: 8 }}>ADET</span>
-               </div>
-            </div>
 
-            <div style={{ border: '1px solid #1e293b', borderRadius: 8, overflow: 'hidden' }}>
-              <div style={{ background: '#0d1117', padding: '12px 16px', borderBottom: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between' }}>
-                 <h4 style={{ margin: 0, fontSize: 13, color: '#e2e8f0', fontWeight: 700 }}>Parça Listesi (Flat BOM)</h4>
-                 <button style={{ height: 28, padding: '0 12px', background: 'transparent', border: '1px solid #1e293b', borderRadius: 4, color: '#64748b', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}><Download size={14}/></button>
-              </div>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr>
-                    <th style={TH}>Parça No</th>
-                    <th style={TH}>Parça Adı</th>
-                    <th style={{ ...TH, textAlign: 'right' }}>Birim Miktar</th>
-                    <th style={{ ...TH, textAlign: 'right' }}>Mevcut Stok</th>
-                    <th style={TH}>Stok Durumu</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {getModelParts(detailModel.id).map(p => {
-                    const req = p.usage?.qtyPerUnit || 1;
-                    const stock = p.currentStock || 0;
-                    const isEnough = stock >= req;
-                    return (
-                      <tr key={p.id}>
-                        <td style={{ ...TD, fontFamily: 'monospace', fontWeight: 600, color: '#f1f5f9' }}>{p.partNumber}</td>
-                        <td style={TD}>{p.name}</td>
-                        <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: '#94a3b8' }}>{req}</td>
-                        <td style={{ ...TD, textAlign: 'right', fontWeight: 900, color: isEnough ? '#34d399' : '#f87171' }}>{stock}</td>
-                        <td style={TD}>
-                          <span style={{ 
-                            fontSize: 10, fontWeight: 800, padding: '3px 8px', borderRadius: 6,
-                            background: STOCK_STATUSES[p.stockStatus || 'Sağlam'].color.split(' ')[0],
-                            color: STOCK_STATUSES[p.stockStatus || 'Sağlam'].color.split(' ')[1]
-                          }}>{p.stockStatus || 'Sağlam'}</span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
-                <button onClick={() => setDetailModel(null)} style={{ height: 40, padding: '0 24px', background: '#1e293b', border: 'none', borderRadius: 8, color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Kapat</button>
-            </div>
-          </div>
-        </Modal>
-      )}
 
       {/* EDIT MODAL */}
       <Modal open={modal} onClose={() => setModal(false)} title={editId ? 'Modeli Düzenle' : 'Yeni Silah Modeli Tanımla'}>

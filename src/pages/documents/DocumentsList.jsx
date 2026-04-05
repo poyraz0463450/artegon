@@ -1,17 +1,31 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import Modal from '../../components/ui/Modal';
 import { Spinner, EmptyState } from '../../components/ui/Shared';
 import { getDocuments, addDocument, updateDocument, deleteDocument, getParts } from '../../firebase/firestore';
-import { DOC_CATEGORIES, DOC_REV_STATUSES, formatDate } from '../../utils/helpers';
+import { DOC_CATEGORIES, DOC_REV_STATUSES, formatDateOnly } from '../../utils/helpers';
 import { useAuth } from '../../context/AuthContext';
-import { Plus, Search, Pencil, Trash2, FileText, File, CheckCircle, UploadCloud, AlertCircle } from 'lucide-react';
+import { 
+  Plus, Search, Pencil, Trash2, FileText, 
+  CheckCircle2, AlertCircle, Filter, 
+  Download, Clock, ShieldCheck, ExternalLink, Box
+} from 'lucide-react';
+import toast from 'react-hot-toast';
 
-const INPUT = { width: '100%', height: 38, padding: '0 12px', background: '#0a0f1e', border: '1px solid #334155', borderRadius: 6, color: '#e2e8f0', fontSize: 13, outline: 'none' };
-const emptyForm = { title: '', category: 'Teknik Resim', linkedPartId: '', linkedWO: '', revision: 'A', fileName: '', description: '', revisionStatus: 'Taslak', isDownloadable: true };
+const CARD_STYLE = { background: '#0d1117', border: '1px solid #1e293b', borderRadius: 12, overflow: 'hidden', transition: 'all 0.2s ease' };
+const INPUT = { width: '100%', height: 40, padding: '0 12px', background: '#0a0f1e', border: '1px solid #1e293b', borderRadius: 8, color: '#e2e8f0', fontSize: 13, outline: 'none' };
+const emptyForm = { title: '', category: 'Teknik Resim', linkedPartId: '', linkedWO: '', revision: 'A', fileName: '', description: '', revisionStatus: 'Taslak', isDownloadable: true, docNumber: '' };
+
+const STATUS_MAP = {
+  'Taslak': { color: '#64748b', bg: '#1e293b', icon: <Clock size={12} /> },
+  'İncelemede': { color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.1)', icon: <AlertCircle size={12} /> },
+  'Onaylandı': { color: '#34d399', bg: 'rgba(52, 211, 153, 0.1)', icon: <CheckCircle2 size={12} /> },
+  'Pasif': { color: '#f87171', bg: 'rgba(248, 113, 113, 0.1)', icon: <Trash2 size={12} /> }
+};
 
 export default function DocumentsList() {
-  const { isAdmin, isEngineer, user, userDoc } = useAuth();
+  const { isAdmin, isEngineer, userDoc } = useAuth();
   const canEdit = isAdmin || isEngineer;
+  
   const [docs, setDocs] = useState([]);
   const [parts, setParts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -19,186 +33,241 @@ export default function DocumentsList() {
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [search, setSearch] = useState('');
-  const [filterCat, setFilterCat] = useState('');
+  const [filterCat, setFilterCat] = useState('all');
 
   useEffect(() => { load(); }, []);
+
   const load = async () => {
-    const [dS, pS] = await Promise.all([getDocuments(), getParts()]);
-    setDocs(dS.docs.map(d => ({ id: d.id, ...d.data() })));
-    setParts(pS.docs.map(d => ({ id: d.id, ...d.data() })));
-    setLoading(false);
+    setLoading(true);
+    try {
+      const [dS, pS] = await Promise.all([getDocuments(), getParts()]);
+      setDocs(dS.docs.map(d => ({ id: d.id, ...d.data() })));
+      setParts(pS.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (e) {
+      toast.error('Dökümanlar yüklenemedi');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const openNew = () => { setEditId(null); setForm(emptyForm); setModal(true); };
-  const openEdit = d => { setEditId(d.id); setForm({ ...emptyForm, ...d }); setModal(true); };
-  
-  const save = async () => {
-    let toSave = { ...form };
-    
-    if (!editId) {
-      toSave.uploadedBy = userDoc?.displayName || user?.email;
-    }
-
-    // Auto-obsolete older revisions if this is approved or incelemede
-    if (form.linkedPartId && (form.revisionStatus === 'Onaylandı' || form.revisionStatus === 'İncelemede')) {
-      const olderDocs = docs.filter(d => d.linkedPartId === form.linkedPartId && d.id !== editId && d.category === form.category);
-      for (const od of olderDocs) {
-        if (od.revision !== form.revision && od.revisionStatus !== 'Pasif') {
-          // Marking old document as Pasif
-          await updateDocument(od.id, { revisionStatus: 'Pasif', isDownloadable: false });
-        }
+  const save = async (e) => {
+    if (e) e.preventDefault();
+    try {
+      let toSave = { 
+        ...form, 
+        updatedAt: new Date().toISOString(),
+        updatedBy: userDoc?.displayName || 'Sistem'
+      };
+      
+      if (!editId) {
+        toSave.createdAt = new Date().toISOString();
+        toSave.uploadedBy = userDoc?.displayName || 'Sistem';
       }
+
+      if (editId) await updateDocument(editId, toSave); 
+      else await addDocument(toSave); 
+
+      toast.success(editId ? 'Güncellendi' : 'Eklendi');
+      setModal(false); 
+      load();
+    } catch (err) {
+      toast.error('Hata oluştu');
     }
-
-    if (editId) await updateDocument(editId, toSave); 
-    else await addDocument(toSave); 
-
-    setModal(false); load();
   };
   
-  const del = async id => { if (!confirm('Silmek istediğinizden emin misiniz?')) return; await deleteDocument(id); load(); };
+  const del = async id => { 
+    if (!confirm('Bu dökümanı silmek istediğinizden emin misiniz?')) return; 
+    try {
+      await deleteDocument(id); 
+      toast.success('Silindi');
+      load(); 
+    } catch (e) { toast.error('Hata'); }
+  };
 
   const approve = async doc => {
-    await updateDocument(doc.id, { revisionStatus: 'Onaylandı', approvedBy: userDoc?.displayName || user?.email, approvedAt: new Date().toISOString() });
-    
-    // Obsolete older ones
-    if (doc.linkedPartId) {
-      const olderDocs = docs.filter(d => d.linkedPartId === doc.linkedPartId && d.id !== doc.id && d.category === doc.category);
-      for (const od of olderDocs) {
-        if (od.revisionStatus !== 'Pasif') {
-          await updateDocument(od.id, { revisionStatus: 'Pasif', isDownloadable: false });
-        }
-      }
-    }
-    load();
+    try {
+      await updateDocument(doc.id, { 
+        revisionStatus: 'Onaylandı', 
+        approvedBy: userDoc?.displayName || 'Sistem', 
+        approvedAt: new Date().toISOString() 
+      });
+      toast.success('Döküman onaylandı');
+      load();
+    } catch (e) { toast.error('Onay hatası'); }
   };
 
-  const submitReview = async doc => {
-    await updateDocument(doc.id, { revisionStatus: 'İncelemede' });
-    load();
-  };
-
-  const filtered = docs.filter(d => {
-    const s = search.toLowerCase();
-    return (!search || d.title?.toLowerCase().includes(s) || d.fileName?.toLowerCase().includes(s)) && (!filterCat || d.category === filterCat);
-  });
-
-  const extIcon = fn => {
-    const ext = (fn || '').split('.').pop()?.toLowerCase();
-    return ext === 'pdf' || ext === 'dwg' || ext === 'xlsx' || ext === 'docx' ? <FileText size={20} /> : <File size={20} />;
-  };
+  const filtered = useMemo(() => {
+    return docs.filter(d => {
+      const s = search.toLowerCase();
+      const matchSearch = !search || d.title?.toLowerCase().includes(s) || d.fileName?.toLowerCase().includes(s) || d.docNumber?.toLowerCase().includes(s);
+      const matchCat = filterCat === 'all' || d.category === filterCat;
+      return matchSearch && matchCat;
+    });
+  }, [docs, search, filterCat]);
 
   if (loading) return <Spinner />;
 
   return (
-    <div className="anim-fade" style={{ padding: '24px', maxWidth: 1400, margin: '0 auto' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative', width: 240 }}>
-          <Search size={14} strokeWidth={1.7} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: '#475569' }} />
-          <input type="text" placeholder="Ara..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...INPUT, paddingLeft: 32, width: 240 }} onFocus={e=>{e.target.style.borderColor='#dc2626'}} onBlur={e=>{e.target.style.borderColor='#334155'}} />
+    <div className="anim-fade" style={{ padding: '24px', maxWidth: 1600, margin: '0 auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <div>
+          <h1 style={{ fontSize: 24, fontWeight: 800, color: '#fff', margin: 0 }}>Doküman Yönetimi (PDM)</h1>
+          <p style={{ color: '#475569', fontSize: 13, marginTop: 4 }}>Merkezi teknik dökümantasyon ve revizyon kontrol sistemi</p>
         </div>
-        <select value={filterCat} onChange={e => setFilterCat(e.target.value)} style={{ ...INPUT, width: 160, cursor: 'pointer' }}>
-          <option value="">Tüm Kategoriler</option>
-          {DOC_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <div style={{ flex: 1 }} />
-        <span style={{ fontSize: 11, color: '#475569' }}>{filtered.length} doküman</span>
-        {canEdit && <button onClick={openNew} style={{ display: 'flex', alignItems: 'center', gap: 6, height: 38, padding: '0 16px', background: '#dc2626', border: 'none', borderRadius: 6, color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}><Plus size={15} strokeWidth={2} /> Yeni Doküman</button>}
+        {canEdit && (
+          <button onClick={() => { setEditId(null); setForm(emptyForm); setModal(true); }} style={{ display: 'flex', alignItems: 'center', gap: 8, height: 40, padding: '0 20px', background: '#3b82f6', border: 'none', borderRadius: 8, color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)' }}>
+            <Plus size={18} /> Yeni Doküman Yükle
+          </button>
+        )}
       </div>
 
-      {filtered.length === 0 ? <EmptyState message="Doküman yok" /> : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
-          {filtered.map(doc => {
-            const isPasif = doc.revisionStatus === 'Pasif';
-            return (
-            <div key={doc.id} style={{ background: '#0d1117', border: `1px solid ${isPasif ? '#450a0a' : '#1e293b'}`, borderRadius: 8, padding: '18px 20px', transition: 'border-color 0.1s', position: 'relative', overflow: 'hidden' }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = isPasif ? '#7f1d1d' : '#334155'; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = isPasif ? '#450a0a' : '#1e293b'; }}
-            >
-              {isPasif && (
-                <div style={{ position: 'absolute', top: 20, right: -30, background: '#dc2626', color: 'white', fontSize: 9, fontWeight: 800, padding: '4px 30px', transform: 'rotate(45deg)', letterSpacing: 2 }}>OBSOLETE</div>
-              )}
-              {doc.revisionStatus === 'Onaylandı' && !isPasif && (
-                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: '#22c55e' }} />
-              )}
-              {doc.revisionStatus === 'İncelemede' && !isPasif && (
-                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: '#fbbf24' }} />
-              )}
-              
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 12, opacity: isPasif ? 0.6 : 1 }}>
-                <div style={{ width: 38, height: 38, background: '#0a0f1e', border: '1px solid #1e293b', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', flexShrink: 0 }}>
-                  {extIcon(doc.fileName)}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.title}</p>
-                  <p style={{ fontSize: 11, color: '#475569', margin: '2px 0 0', fontFamily: 'monospace' }}>{doc.fileName || '—'}</p>
-                </div>
-                <span style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', background: '#1e293b', padding: '2px 7px', borderRadius: 4, whiteSpace: 'nowrap' }}>{doc.category}</span>
+      <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 24 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+           <div style={CARD_STYLE}>
+              <h4 style={{ margin: '0 0 16px', padding: '16px 16px 0', fontSize: 12, fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>Kategoriler</h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '0 8px 16px' }}>
+                 <button 
+                   onClick={() => setFilterCat('all')}
+                   style={{ width: '100%', textAlign: 'left', padding: '8px 12px', borderRadius: 6, background: filterCat === 'all' ? '#1e293b' : 'transparent', border: 'none', color: filterCat === 'all' ? '#fff' : '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+                 >Tüm Dökümanlar</button>
+                 {DOC_CATEGORIES.map(c => (
+                   <button 
+                     key={c}
+                     onClick={() => setFilterCat(c)}
+                     style={{ width: '100%', textAlign: 'left', padding: '8px 12px', borderRadius: 6, background: filterCat === c ? '#1e293b' : 'transparent', border: 'none', color: filterCat === c ? '#fff' : '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+                   >{c}</button>
+                 ))}
               </div>
-              
-              {doc.description && <p style={{ fontSize: 12, color: '#64748b', margin: '0 0 10px', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', opacity: isPasif ? 0.6 : 1 }}>{doc.description}</p>}
-              
-              <div style={{ display: 'flex', gap: 12, fontSize: 10, color: '#475569', marginBottom: 12, opacity: isPasif ? 0.6 : 1 }}>
-                <span style={{ color: doc.revisionStatus === 'Onaylandı' ? '#22c55e' : doc.revisionStatus === 'İncelemede' ? '#fbbf24' : '#64748b', fontWeight: 600 }}>Rev: {doc.revision}</span>
-                {doc.linkedPartId && <span>Parça: {parts.find(p=>p.id===doc.linkedPartId)?.partNumber || doc.linkedPartId}</span>}
-                {doc.linkedWO && <span>İE: {doc.linkedWO}</span>}
-              </div>
-              
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 10, borderTop: '1px solid #1a2332' }}>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <span style={{ fontSize: 10, color: '#475569' }}>{doc.uploadedBy} · {formatDate(doc.createdAt)}</span>
-                  {doc.approvedBy && <span style={{ fontSize: 10, color: '#22c55e' }}>Onay: {doc.approvedBy}</span>}
-                </div>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {doc.revisionStatus === 'Taslak' && (doc.uploadedBy === userDoc?.displayName || doc.uploadedBy === user?.email || canEdit) && (
-                    <button onClick={() => submitReview(doc)} title="İncelemeye Gönder" style={{ height: 26, padding: '0 10px', border: '1px solid #1e293b', background: 'transparent', color: '#fbbf24', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, borderRadius: 4, fontSize: 10, fontWeight: 600 }} onMouseEnter={e=>e.currentTarget.style.background='#1e293b'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}><UploadCloud size={12} /> Gönder</button>
-                  )}
-                  {doc.revisionStatus === 'İncelemede' && canEdit && (
-                    <button onClick={() => approve(doc)} title="Onayla" style={{ height: 26, padding: '0 10px', border: '1px solid #14532d', background: 'rgba(34,197,94,0.1)', color: '#22c55e', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, borderRadius: 4, fontSize: 10, fontWeight: 600 }} onMouseEnter={e=>e.currentTarget.style.background='rgba(34,197,94,0.2)'} onMouseLeave={e=>e.currentTarget.style.background='rgba(34,197,94,0.1)'}><CheckCircle size={12} /> Onayla</button>
-                  )}
-                  {doc.isDownloadable && !isPasif && (
-                    <button onClick={() => alert('Firebase Storage mock: Dosya İndirildi.')} title="İndir" style={{ height: 26, padding: '0 10px', border: '1px solid #1e293b', background: 'transparent', color: '#e2e8f0', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, borderRadius: 4, fontSize: 10, fontWeight: 600 }} onMouseEnter={e=>e.currentTarget.style.background='#1e293b'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>İndir</button>
-                  )}
-                  {canEdit && (
-                    <>
-                      <button onClick={() => openEdit(doc)} style={{ width: 26, height: 26, border: 'none', background: 'transparent', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 4 }}
-                        onMouseEnter={e=>{e.currentTarget.style.background='#1e293b';e.currentTarget.style.color='#e2e8f0'}} onMouseLeave={e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color='#475569'}}
-                      ><Pencil size={12} strokeWidth={1.7} /></button>
-                      {isAdmin && <button onClick={() => del(doc.id)} style={{ width: 26, height: 26, border: 'none', background: 'transparent', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 4 }}
-                        onMouseEnter={e=>{e.currentTarget.style.background='rgba(220,38,38,0.1)';e.currentTarget.style.color='#dc2626'}} onMouseLeave={e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color='#475569'}}
-                      ><Trash2 size={12} strokeWidth={1.7} /></button>}
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-          )})}
+           </div>
         </div>
-      )}
 
-      <Modal open={modal} onClose={() => setModal(false)} title={editId ? 'Doküman Düzenle' : 'Yeni Doküman'}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div><label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 5 }}>Başlık</label><input value={form.title} onChange={e=>setForm({...form,title:e.target.value})} style={INPUT} onFocus={e=>{e.target.style.borderColor='#dc2626'}} onBlur={e=>{e.target.style.borderColor='#334155'}} /></div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div><label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 5 }}>Kategori</label><select value={form.category} onChange={e=>setForm({...form,category:e.target.value})} style={{ ...INPUT, cursor: 'pointer' }}>{DOC_CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
-            <div><label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 5 }}>Revizyon</label><input value={form.revision} onChange={e=>setForm({...form,revision:e.target.value})} style={INPUT} onFocus={e=>{e.target.style.borderColor='#dc2626'}} onBlur={e=>{e.target.style.borderColor='#334155'}} /></div>
-          </div>
-          <div><label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 5 }}>Dosya Adı</label><input value={form.fileName} onChange={e=>setForm({...form,fileName:e.target.value})} placeholder="teknik-resim.pdf" style={INPUT} onFocus={e=>{e.target.style.borderColor='#dc2626'}} onBlur={e=>{e.target.style.borderColor='#334155'}} /></div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div><label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 5 }}>Bağlı Parça</label><select value={form.linkedPartId} onChange={e=>setForm({...form,linkedPartId:e.target.value})} style={{ ...INPUT, cursor: 'pointer' }}><option value="">Seçin...</option>{parts.map(p=><option key={p.id} value={p.id}>{p.partNumber} — {p.name}</option>)}</select></div>
-            <div><label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 5 }}>Bağlı İE</label><input value={form.linkedWO} onChange={e=>setForm({...form,linkedWO:e.target.value})} style={INPUT} onFocus={e=>{e.target.style.borderColor='#dc2626'}} onBlur={e=>{e.target.style.borderColor='#334155'}} /></div>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div><label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 5 }}>Durum</label><select value={form.revisionStatus} onChange={e=>setForm({...form,revisionStatus:e.target.value})} style={{ ...INPUT, cursor: 'pointer' }}>{DOC_REV_STATUSES.map(s=><option key={s} value={s}>{s}</option>)}</select></div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#e2e8f0', fontSize: 13, marginTop: 22 }}><input type="checkbox" checked={form.isDownloadable} onChange={e=>setForm({...form,isDownloadable:e.target.checked})} /> İndirilebilir</label>
-          </div>
-          <div><label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 5 }}>Açıklama</label><textarea value={form.description} onChange={e=>setForm({...form,description:e.target.value})} rows={2} style={{ ...INPUT, height: 'auto', padding: 12, resize: 'none' }} /></div>
-          
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
-            <button onClick={() => setModal(false)} style={{ height: 36, padding: '0 18px', background: 'transparent', border: '1px solid #334155', borderRadius: 6, color: '#94a3b8', fontSize: 12, fontWeight: 500, cursor: 'pointer' }}>İptal</button>
-            <button onClick={save} style={{ height: 36, padding: '0 20px', background: '#dc2626', border: 'none', borderRadius: 6, color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>{editId ? 'Güncelle' : 'Kaydet'}</button>
-          </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+           <div style={{ ...CARD_STYLE, padding: 12, display: 'flex', gap: 12 }}>
+              <div style={{ position: 'relative', flex: 1 }}>
+                 <Search size={16} style={{ position: 'absolute', left: 12, top: 12, color: '#475569' }} />
+                 <input 
+                    style={{ ...INPUT, paddingLeft: 40 }} 
+                    placeholder="Başlık, numara veya dosya adı ile ara..." 
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                 />
+              </div>
+              <button style={{ height: 40, width: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0a0f1e', border: '1px solid #1e293b', borderRadius: 8, color: '#475569', cursor: 'pointer' }}>
+                 <Filter size={18} />
+              </button>
+           </div>
+
+           {filtered.length === 0 ? (
+             <EmptyState message="Aradığınız kriterlere uygun döküman bulunamadı." />
+           ) : (
+             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 20 }}>
+                {filtered.map(doc => {
+                  const status = STATUS_MAP[doc.revisionStatus] || STATUS_MAP['Taslak'];
+                  return (
+                    <div key={doc.id} style={CARD_STYLE}>
+                       <div style={{ padding: 20 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+                             <div style={{ width: 44, height: 44, borderRadius: 10, background: '#0a0f1e', border: '1px solid #1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3b82f6' }}>
+                                <FileText size={24} />
+                             </div>
+                             <div style={{ display: 'flex', gap: 6 }}>
+                                <span style={{ fontSize: 10, fontWeight: 800, padding: '4px 10px', borderRadius: 20, background: status.bg, color: status.color, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                   {status.icon} {doc.revisionStatus.toUpperCase()}
+                                </span>
+                             </div>
+                          </div>
+                          
+                          <h4 style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 800, color: '#f1f5f9' }}>{doc.title}</h4>
+                          <p style={{ margin: 0, fontSize: 11, color: '#475569', fontFamily: 'monospace' }}>{doc.docNumber || 'NO-REF'}</p>
+                          
+                          <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#94a3b8' }}>
+                                <ShieldCheck size={14} color="#64748b" />
+                                <span>Revizyon: <strong>{doc.revision}</strong></span>
+                             </div>
+                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#94a3b8' }}>
+                                <Box size={14} color="#64748b" />
+                                <span>{doc.linkedPartNumber || 'Genel Doküman'}</span>
+                             </div>
+                          </div>
+
+                          <div style={{ marginTop: 20, display: 'flex', gap: 8 }}>
+                             <button style={{ flex: 1, height: 36, background: '#1e1b4b', border: 'none', borderRadius: 8, color: '#818cf8', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                                <Download size={14} /> İndir
+                             </button>
+                          </div>
+                       </div>
+
+                       <div style={{ background: '#0a0f1e', padding: '12px 20px', borderTop: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: 11, color: '#475569' }}>{formatDateOnly(doc.createdAt)}</span>
+                          <div style={{ display: 'flex', gap: 4 }}>
+                             {doc.revisionStatus === 'İncelemede' && canEdit && (
+                               <button onClick={() => approve(doc)} style={{ height: 28, padding: '0 12px', background: '#065f46', border: 'none', borderRadius: 6, color: '#34d399', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Onayla</button>
+                             )}
+                             <button onClick={() => { setEditId(doc.id); setForm(doc); setModal(true); }} style={{ height: 28, width: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', cursor: 'pointer', background: 'transparent', border: 'none' }}>
+                                <Pencil size={14} />
+                             </button>
+                             {isAdmin && (
+                               <button onClick={() => del(doc.id)} style={{ height: 28, width: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#450a0a', cursor: 'pointer', background: 'transparent', border: 'none' }}>
+                                  <Trash2 size={14} />
+                               </button>
+                             )}
+                          </div>
+                       </div>
+                    </div>
+                  );
+                })}
+             </div>
+           )}
         </div>
+      </div>
+
+      <Modal open={modal} onClose={() => setModal(false)} title={editId ? 'Doküman Düzenle' : 'Yeni Doküman Yükle'}>
+         <form onSubmit={save} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div>
+               <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 6 }}>DOKÜMAN BAŞLIĞI</label>
+               <input style={INPUT} value={form.title} onChange={e => setForm({...form, title: e.target.value})} required placeholder="Örn: Gövde Teknik Resmi" />
+            </div>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+               <div>
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 6 }}>KATEGORİ</label>
+                  <select style={INPUT} value={form.category} onChange={e => setForm({...form, category: e.target.value})}>
+                     {DOC_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+               </div>
+               <div>
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 6 }}>REVİZYON</label>
+                  <input style={INPUT} value={form.revision} onChange={e => setForm({...form, revision: e.target.value})} />
+               </div>
+            </div>
+
+            <div>
+               <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 6 }}>DOKÜMAN NUMARASI</label>
+               <input style={INPUT} value={form.docNumber} onChange={e => setForm({...form, docNumber: e.target.value})} placeholder="Örn: TR-100-01" />
+            </div>
+
+            <div>
+               <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 6 }}>BAĞLI PARÇA</label>
+               <select style={INPUT} value={form.linkedPartId} onChange={e => {
+                 const p = parts.find(x => x.id === e.target.value);
+                 setForm({...form, linkedPartId: e.target.value, linkedPartNumber: p?.partNumber || ''});
+               }}>
+                  <option value="">Genel (Parçaya bağlı değil)</option>
+                  {parts.map(p => <option key={p.id} value={p.id}>{p.partNumber} — {p.name}</option>)}
+               </select>
+            </div>
+
+            <div>
+               <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 6 }}>AÇIKLAMA</label>
+               <textarea style={{ ...INPUT, height: 80, padding: 12, resize: 'none' }} value={form.description} onChange={e => setForm({...form, description: e.target.value})} />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 10 }}>
+               <button type="button" onClick={() => setModal(false)} style={{ height: 40, padding: '0 20px', background: 'transparent', border: '1px solid #1e293b', borderRadius: 8, color: '#64748b', fontWeight: 600, cursor: 'pointer' }}>İptal</button>
+               <button type="submit" style={{ height: 40, padding: '0 32px', background: '#3b82f6', border: 'none', borderRadius: 8, color: 'white', fontWeight: 800, cursor: 'pointer' }}>Kaydet</button>
+            </div>
+         </form>
       </Modal>
     </div>
   );
