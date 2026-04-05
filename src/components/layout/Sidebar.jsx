@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useNotifications } from '../../context/NotificationContext';
 import { logoutUser } from '../../firebase/auth';
 import { ROLE_LABELS } from '../../utils/helpers';
 import {
@@ -13,13 +14,52 @@ import {
 const SECTIONS = [
   {
     id: 'engineering',
-    label: 'Malzeme Yönetimi',
+    label: 'Mühendislik (PLM)',
     icon: Binary,
     roles: ['admin', 'engineer', 'warehouse', 'kalite', 'viewer'],
     items: [
-      { to: '/parts', label: 'Parçalar & Stok', icon: Package },
-      { to: '/models', label: 'Modeller', icon: Crosshair },
+      { to: '/parts', label: 'Parça Master', icon: Package, badgeId: 'criticalStock' },
+      { to: '/models', label: 'CAD Modeller', icon: Crosshair },
+    ]
+  },
+  {
+    id: 'purchasing',
+    label: 'Satınalma (SCM)',
+    icon: ShoppingCart,
+    roles: ['admin', 'satin_alma', 'warehouse'],
+    items: [
+      { to: '/purchasing', label: 'Satınalma Paneli', icon: LayoutDashboard },
+      { to: '/purchasing/mrp', label: 'MRP Planlaması', icon: FileSpreadsheet },
+      { to: '/purchasing/rfq', label: 'Teklif Toplama (RFQ)', icon: FileText },
+      { to: '/purchasing/requests', label: 'Satınalma Talepleri', icon: ListOrdered },
+      { to: '/purchasing/orders', label: 'Satınalma Siparişleri', icon: ShoppingCart, badgeId: 'delayedPO' },
+      { to: '/purchasing/asn', label: 'ASN - Sevk Bildirimi', icon: Truck, badgeId: 'pendingGRN' },
+      { to: '/purchasing/receipts', label: 'Mal Kabul (GRN)', icon: FileCheck },
+      { to: '/purchasing/invoices', label: 'Faturalar', icon: FileText },
+      { to: '/purchasing/suppliers', label: 'Tedarikçiler', icon: Building2 },
+    ]
+  },
+  {
+    id: 'quality',
+    label: 'Kalite (QMS)',
+    icon: ShieldCheck,
+    roles: ['admin', 'kalite'],
+    items: [
+      { to: '/qc/plans', label: 'Muayene Planları', icon: FileSpreadsheet },
+      { to: '/qc/inspections', label: 'Muayene Kayıtları', icon: ShieldCheck, badgeId: 'pendingQC' },
+      { to: '/qc/ncr', label: 'Uygunsuzluk (NCR)', icon: ShieldAlert, badgeId: 'openNCR' },
+      { to: '/qc/tools', label: 'Ölçüm Cihazları', icon: HardDrive, badgeId: 'expiredCalibration' },
+    ]
+  },
+  {
+    id: 'warehouse',
+    label: 'Depo (WMS)',
+    icon: Package,
+    roles: ['admin', 'warehouse', 'kalite'],
+    items: [
       { to: '/stock-movements', label: 'Stok Hareketleri', icon: ArrowLeftRight },
+      { to: '/inventory/cycle-counts', label: 'Periyodik Sayım', icon: ListOrdered },
+      { to: '/inventory/traceability', label: 'İzlenebilirlik', icon: Crosshair },
     ]
   },
   {
@@ -31,30 +71,6 @@ const SECTIONS = [
       { to: '/work-centers', label: 'İş Merkezleri', icon: Cpu },
       { to: '/work-orders', label: 'İş Emirleri', icon: ListOrdered },
       { to: '/gantt', label: 'Üretim Planı (Gantt)', icon: Binary },
-    ]
-  },
-  {
-    id: 'quality',
-    label: 'Kalite (QMS)',
-    icon: ShieldCheck,
-    roles: ['admin', 'kalite'],
-    items: [
-      { to: '/qc/plans', label: 'Muayene Planları', icon: FileSpreadsheet },
-      { to: '/qc/inspections', label: 'Muayene Kayıtları', icon: ShieldCheck },
-      { to: '/qc/ncr', label: 'Uygunsuzluk (NCR)', icon: ShieldAlert },
-    ]
-  },
-  {
-    id: 'purchasing',
-    label: 'Satınalma (SCM)',
-    icon: ShoppingCart,
-    roles: ['admin', 'satin_alma', 'warehouse'],
-    items: [
-      { to: '/purchasing', label: 'Satınalma Paneli', icon: LayoutDashboard },
-      { to: '/purchasing/requests', label: 'Talepler (PR)', icon: ListOrdered },
-      { to: '/purchasing/orders', label: 'Siparişler (PO)', icon: FileSpreadsheet },
-      { to: '/purchasing/receipts', label: 'Mal Kabul (GR)', icon: Truck },
-      { to: '/purchasing/suppliers', label: 'Tedarikçiler', icon: Building2 },
     ]
   },
   {
@@ -70,6 +86,7 @@ const SECTIONS = [
 
 export default function Sidebar() {
   const { role, user, userDoc } = useAuth();
+  const { counts } = useNotifications();
   const navigate = useNavigate();
 
   // Default open state for critical sections
@@ -159,10 +176,20 @@ export default function Sidebar() {
                     })}
                   >
                     {({ isActive }) => (
-                      <>
-                        <item.icon size={16} strokeWidth={isActive ? 2.5 : 1.5} />
-                        <span>{item.label}</span>
-                      </>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <item.icon size={16} strokeWidth={isActive ? 2.5 : 1.5} />
+                          <span>{item.label}</span>
+                        </div>
+                        {item.badgeId && counts[item.badgeId] > 0 && (
+                          <span style={{
+                            background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 800,
+                            padding: '2px 6px', borderRadius: 12, minWidth: 20, textAlign: 'center'
+                          }}>
+                            {counts[item.badgeId]}
+                          </span>
+                        )}
+                      </div>
                     )}
                   </NavLink>
                 ))}

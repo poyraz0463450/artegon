@@ -27,6 +27,7 @@ import DocumentsList from './pages/documents/DocumentsList';
 
 // Module 5: SCM (Purchasing)
 import PurchasingDashboard from './pages/purchasing/PurchasingDashboard';
+import MRPDashboard from './pages/purchasing/MRPDashboard';
 import PurchaseRequests from './pages/purchasing/PurchaseRequests';
 import PurchaseOrders from './pages/purchasing/PurchaseOrders';
 import InventoryReceipts from './pages/purchasing/InventoryReceipts';
@@ -35,6 +36,7 @@ import SuppliersList from './pages/purchasing/SuppliersList';
 // Admin
 import UserManagement from './pages/admin/UserManagement';
 
+import { NotificationProvider } from './context/NotificationContext';
 import { Spinner } from './components/ui/Shared';
 import { Toaster } from 'react-hot-toast';
 
@@ -88,14 +90,22 @@ function AppRoutes() {
         <Route path="qc/inspections" element={<InspectionsList />} />
         <Route path="qc/inspections/:id" element={<InspectionDetail />} />
         <Route path="qc/ncr" element={<NcrRecords />} />
+        <Route path="qc/tools" element={<ComingSoon title="Ölçüm Cihazları" />} />
 
         {/* Satınalma (SCM) */}
         <Route path="purchasing" element={<PurchasingDashboard />} />
+        <Route path="purchasing/mrp" element={<MRPDashboard />} />
+        <Route path="purchasing/rfq" element={<ComingSoon title="Teklif Toplama (RFQ)" />} />
         <Route path="purchasing/requests" element={<PurchaseRequests />} />
         <Route path="purchasing/orders" element={<PurchaseOrders />} />
+        <Route path="purchasing/asn" element={<ComingSoon title="ASN - Sevk Bildirimi" />} />
         <Route path="purchasing/receipts" element={<InventoryReceipts />} />
         <Route path="purchasing/suppliers" element={<SuppliersList />} />
         <Route path="purchasing/invoices" element={<ComingSoon title="Faturalar" />} />
+
+        {/* Depo / Stok (New Section for Storage logic) */}
+        <Route path="inventory/cycle-counts" element={<ComingSoon title="Periyodik Sayım" />} />
+        <Route path="inventory/traceability" element={<ComingSoon title="İzlenebilirlik" />} />
 
         {/* Dokümanlar (PDM) */}
         <Route path="documents" element={<DocumentsList />} />
@@ -115,8 +125,10 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <Toaster position="top-right" />
-        <AppRoutes />
+        <NotificationProvider>
+          <Toaster position="top-right" />
+          <AppRoutes />
+        </NotificationProvider>
       </AuthProvider>
     </BrowserRouter>
   );

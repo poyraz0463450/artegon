@@ -62,6 +62,9 @@ export default function PartDetail() {
   const [bomForm, setBomForm] = useState({ partNumber: '', name: '', qty: 1, unit: 'Adet' });
   const [showLotModal, setShowLotModal] = useState(false);
   const [lotForm, setLotForm] = useState({ lotNumber: '', quantity: 1, warehouseLocation: '' });
+  const [showSupplierModal, setShowSupplierModal] = useState(false);
+  const [allSuppliers, setAllSuppliers] = useState([]);
+  const [supplierForm, setSupplierForm] = useState({ supplierId: '', unitPrice: '', currency: 'TRY', leadTimeDays: 7 });
 
   useEffect(() => {
     if (id === 'new') {
@@ -102,6 +105,8 @@ export default function PartDetail() {
       setSuppliers(s.docs.map(x => ({ id: x.id, ...x.data() })).filter(x => x.partId === id));
       setPriceHistory(ph.docs.map(x => ({ id: x.id, ...x.data() })).filter(x => x.partId === id));
 
+      const allS = await getSuppliers();
+      setAllSuppliers(allS.docs.map(x => ({ id: x.id, ...x.data() })));
     } catch (e) {
       console.error(e);
       toast.error('Hata: Veriler yüklenemedi');
@@ -189,6 +194,29 @@ export default function PartDetail() {
     }
   };
 
+  const handleAddSupplierToAVL = async () => {
+    if (!supplierForm.supplierId) return toast.error('Tedarikçi seçiniz');
+    try {
+      const selectedS = allSuppliers.find(s => s.id === supplierForm.supplierId);
+      const data = {
+        partId: id,
+        partNumber: part.partNumber,
+        supplierId: supplierForm.supplierId,
+        supplierName: selectedS.name,
+        unitPrice: Number(supplierForm.unitPrice),
+        currency: supplierForm.currency,
+        leadTimeDays: Number(supplierForm.leadTimeDays),
+        isPreferred: suppliers.length === 0
+      };
+      await addSupplierPart(data);
+      setSuppliers([...suppliers, { id: Date.now().toString(), ...data }]);
+      setShowSupplierModal(false);
+      toast.success('Tedarikçi listeye eklendi');
+    } catch (e) {
+      toast.error('Hata oluştu');
+    }
+  };
+
   const EmptyStateUI = ({ message, action }) => (
     <div style={{ padding: 40, textAlign: 'center', background: '#0a0f1e', borderRadius: 12, border: '1px dashed #1e293b', width: '100%' }}>
       <p style={{ color: '#64748b', fontSize: 13, marginBottom: action ? 16 : 0, fontWeight: 600 }}>{message}</p>
@@ -196,17 +224,38 @@ export default function PartDetail() {
     </div>
   );
 
-  const openNewRevision = () => {
+  const openNewRevision = async () => {
     const reason = prompt('Yeni revizyon açma gerekçesi (ECN):');
     if (!reason) return;
+    if (id === 'new') return toast.error('Önce parçayı kaydedin.');
+
     const oldRev = part.revision;
     const nextRev = String.fromCharCode(oldRev.charCodeAt(0) + 1);
-    const newHist = [
-      ...(part.revisionHistory || []),
-      { rev: oldRev, changedBy: userDoc?.displayName, changeDate: new Date().toISOString(), changeReason: reason }
-    ];
-    setPart({ ...part, revision: nextRev, revisionHistory: newHist });
-    toast.success(`Yeni Revizyon: ${nextRev} taslak olarak oluşturuldu.`);
+    
+    try {
+      // 1. Set current to Pasif
+      await updatePart(id, { revisionStatus: 'Pasif' });
+      
+      // 2. Clone to new object
+      const newPart = {
+        ...part,
+        revision: nextRev,
+        revisionStatus: 'Aktif',
+        revisionHistory: [
+          ...(part.revisionHistory || []),
+          { rev: oldRev, changedBy: userDoc?.displayName, changeDate: new Date().toISOString(), changeReason: reason }
+        ],
+        currentStock: 0,
+        reservedStock: 0
+      };
+      delete newPart.id;
+
+      const docRef = await addPart(newPart);
+      toast.success(`Yeni Revizyon: ${nextRev} tasarımı açıldı.`);
+      navigate(`/parts/${docRef.id}`);
+    } catch (err) {
+      toast.error('Revizyon açılırken hata oluştu');
+    }
   };
 
   if (loading) return <Spinner />;
@@ -261,6 +310,15 @@ export default function PartDetail() {
         {activeTab === 'Genel' && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, maxWidth: 1400, margin: '0 auto' }}>
             <div className="section">
+              {part.revisionStatus === 'Pasif' && (
+                <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', padding: '12px 16px', borderRadius: 8, display: 'flex', gap: 12, marginBottom: 20 }}>
+                  <AlertTriangle color="#ef4444" size={24} />
+                  <div>
+                    <h4 style={{ margin: 0, color: '#ef4444', fontSize: 13, fontWeight: 700 }}>OBSOLETE - PASİF REVİZYON</h4>
+                    <p style={{ margin: '4px 0 0', color: '#fca5a5', fontSize: 11 }}>Bu revizyon pasife çekilmiştir (Rev {part.revision}). İş emirlerinde veya yeni satınalmalarda kullanılamaz.</p>
+                  </div>
+                </div>
+              )}
               {part.isCritical && (
                 <div style={{ background: 'rgba(251, 191, 36, 0.1)', border: '1px solid #fbbf24', padding: '12px 16px', borderRadius: 8, display: 'flex', gap: 12, marginBottom: 20 }}>
                   <AlertTriangle color="#fbbf24" size={24} />
@@ -311,12 +369,43 @@ export default function PartDetail() {
               </div>
 
               <div style={CARD_STYLE}>
-                <h3 style={{ fontSize: 14, fontWeight: 800, color: '#60a5fa', margin: '0 0 20px', display: 'flex', alignItems: 'center', gap: 8 }}><TrendingUp size={16}/> Stok & Depo Ayarları</h3>
+                <h3 style={{ fontSize: 14, fontWeight: 800, color: '#60a5fa', margin: '0 0 20px', display: 'flex', alignItems: 'center', gap: 8 }}><Calculator size={16}/> MRP / Planlama Ayarları</h3>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 16 }}>
-                  <div><label style={LABEL_STYLE}>Mevcut Stok</label><input type="number" min="0" style={INPUT_STYLE} value={part.currentStock} onChange={e=>setPart({...part,currentStock:Number(e.target.value)})} disabled={!canEdit} /></div>
-                  <div><label style={LABEL_STYLE}>Minimum Stok</label><input type="number" style={INPUT_STYLE} value={part.minStock} onChange={e=>setPart({...part,minStock:Number(e.target.value)})} disabled={!canEdit} /></div>
-                  <div><label style={LABEL_STYLE}>Maksimum Stok</label><input type="number" style={INPUT_STYLE} value={part.maxStock} onChange={e=>setPart({...part,maxStock:Number(e.target.value)})} disabled={!canEdit} /></div>
-                  <div><label style={LABEL_STYLE}>Depo Lokasyonu</label><input style={INPUT_STYLE} value={part.warehouseLocation} onChange={e=>setPart({...part,warehouseLocation:e.target.value})} disabled={!canEdit} /></div>
+                  <div><label style={LABEL_STYLE}>Teslim Süresi (LT)</label><input type="number" min="0" style={INPUT_STYLE} value={part.leadTimeDays || 0} onChange={e=>{
+                    const val = Number(e.target.value);
+                    const rp = (val + (part.safetyStockDays || 0)) * (part.avgDailyConsumption || 0);
+                    setPart({...part, leadTimeDays: val, reorderPoint: rp});
+                  }} disabled={!canEdit} /></div>
+                  
+                  <div><label style={LABEL_STYLE}>Emniyet Stoku (Gün)</label><input type="number" min="0" style={INPUT_STYLE} value={part.safetyStockDays || 0} onChange={e=>{
+                    const val = Number(e.target.value);
+                    const rp = ((part.leadTimeDays || 0) + val) * (part.avgDailyConsumption || 0);
+                    setPart({...part, safetyStockDays: val, reorderPoint: rp});
+                  }} disabled={!canEdit} /></div>
+                  
+                  <div><label style={LABEL_STYLE}>Gnl. Ort. Tüketim</label><input type="number" min="0" style={INPUT_STYLE} value={part.avgDailyConsumption || 0} onChange={e=>{
+                    const val = Number(e.target.value);
+                    const rp = ((part.leadTimeDays || 0) + (part.safetyStockDays || 0)) * val;
+                    setPart({...part, avgDailyConsumption: val, reorderPoint: rp});
+                  }} disabled={!canEdit} /></div>
+                  
+                  <div><label style={LABEL_STYLE}>Sipariş Miktarı</label><input type="number" min="0" style={INPUT_STYLE} value={part.reorderQty || 0} onChange={e=>setPart({...part, reorderQty: Number(e.target.value)})} disabled={!canEdit} /></div>
+                  
+                  <div style={{ gridColumn: 'span 2', background: '#1e293b', padding: '10px 12px', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8' }}>Otomatik Sipariş Noktası (RP)</span>
+                    <span style={{ fontSize: 16, fontWeight: 900, color: '#34d399' }}>{part.reorderPoint || 0} {part.unit || 'Adet'}</span>
+                  </div>
+                  <div style={{ gridColumn: 'span 2', background: 'rgba(239, 68, 68, 0.1)', padding: '10px 12px', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+                     <span style={{ fontSize: 12, fontWeight: 700, color: '#ef4444' }}>Tükenme Tahmini</span>
+                     <span style={{ fontSize: 14, fontWeight: 800, color: '#ef4444' }}>
+                        {part.avgDailyConsumption > 0 ? Math.floor(part.currentStock / part.avgDailyConsumption) : '∞'} GÜN
+                     </span>
+                  </div>
+                  
+                  <div style={{ gridColumn: 'span 4' }}>
+                     <label style={LABEL_STYLE}>Depo Lokasyonu</label>
+                     <input style={INPUT_STYLE} value={part.warehouseLocation || ''} onChange={e=>setPart({...part,warehouseLocation:e.target.value})} disabled={!canEdit} placeholder="Örn: A-01" />
+                  </div>
                 </div>
               </div>
             </div>
@@ -327,10 +416,12 @@ export default function PartDetail() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                   <div><label style={LABEL_STYLE}>Malzeme</label><input style={INPUT_STYLE} value={part.material} onChange={e=>setPart({...part,material:e.target.value})} disabled={!canEdit} /></div>
                   <div><label style={LABEL_STYLE}>Malzeme Standardı</label><input style={INPUT_STYLE} value={part.materialStandard} onChange={e=>setPart({...part,materialStandard:e.target.value})} disabled={!canEdit} /></div>
+                  <div><label style={LABEL_STYLE}>Üst Tolerans (+)</label><input type="number" step="0.01" style={INPUT_STYLE} value={part.toleranceUpper || 0} onChange={e=>setPart({...part,toleranceUpper:Number(e.target.value)})} disabled={!canEdit} /></div>
+                  <div><label style={LABEL_STYLE}>Alt Tolerans (-)</label><input type="number" step="0.01" style={INPUT_STYLE} value={part.toleranceLower || 0} onChange={e=>setPart({...part,toleranceLower:Number(e.target.value)})} disabled={!canEdit} /></div>
                   <div><label style={LABEL_STYLE}>Yüzey İşlem</label><input style={INPUT_STYLE} value={part.surfaceTreatment} onChange={e=>setPart({...part,surfaceTreatment:e.target.value})} disabled={!canEdit} /></div>
                   <div><label style={LABEL_STYLE}>Sertlik</label><input style={INPUT_STYLE} value={part.hardness} onChange={e=>setPart({...part,hardness:e.target.value})} disabled={!canEdit} /></div>
                   <div><label style={LABEL_STYLE}>Ağırlık (Gram)</label><input type="number" style={INPUT_STYLE} value={part.weight} onChange={e=>setPart({...part,weight:e.target.value})} disabled={!canEdit} /></div>
-                  <div><label style={LABEL_STYLE}>Boyutlar (mm)</label><input style={INPUT_STYLE} value={part.dimensions} onChange={e=>setPart({...part,dimensions:e.target.value})} disabled={!canEdit} /></div>
+                  <div><label style={LABEL_STYLE}>Boyutlar / CTQ Flag</label><input style={INPUT_STYLE} value={part.dimensions} onChange={e=>setPart({...part,dimensions:e.target.value})} placeholder="Örn: Ø20x100 [CTQ]" disabled={!canEdit} /></div>
                 </div>
               </div>
 
@@ -682,9 +773,16 @@ export default function PartDetail() {
         {/* TAB 6: TEDARİK */}
         {activeTab === 'Tedarik' && (
           <div style={{ maxWidth: 1400, margin: '0 auto', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 400px', gap: 24 }}>
-             <div className="main">
+              <div className="main">
                 <div style={CARD_STYLE}>
-                   <h3 style={{ fontSize: 15, fontWeight: 800, color: '#e2e8f0', margin: '0 0 20px' }}>Tanımlı Tedarikçiler & Katalog Bilgisi</h3>
+                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                     <h3 style={{ fontSize: 15, fontWeight: 800, color: '#e2e8f0', margin: 0 }}>Onaylı Tedarikçi Listesi (AVL)</h3>
+                     {canEdit && (
+                       <button onClick={() => setShowSupplierModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, height: 32, padding: '0 12px', background: '#3b82f6', border: 'none', borderRadius: 4, color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                         <Plus size={14} /> Tedarikçi Ekle
+                       </button>
+                     )}
+                   </div>
                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                      <thead>
                        <tr>
@@ -784,6 +882,41 @@ export default function PartDetail() {
           <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
             <button onClick={() => setShowLotModal(false)} style={{ background: 'transparent', color: '#f1f5f9', border: '1px solid #1e293b', padding: '10px 16px', borderRadius: 8, cursor: 'pointer' }}>İptal</button>
             <button onClick={handleAddBatch} style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '10px 16px', borderRadius: 8, fontWeight: 700, cursor: 'pointer' }}>Lotu Kaydet</button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* SUPPLIER MODAL */}
+      <Modal isOpen={showSupplierModal} onClose={() => setShowSupplierModal(false)} title="AVL'ye Tedarikçi Ekle">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div>
+            <label style={LABEL_STYLE}>Tedarikçi Seçin</label>
+            <select style={INPUT_STYLE} value={supplierForm.supplierId} onChange={e=>setSupplierForm({...supplierForm, supplierId: e.target.value})}>
+              <option value="">Seçiniz...</option>
+              {allSuppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div>
+              <label style={LABEL_STYLE}>Birim Fiyat</label>
+              <input type="number" style={INPUT_STYLE} value={supplierForm.unitPrice} onChange={e=>setSupplierForm({...supplierForm, unitPrice: e.target.value})} />
+            </div>
+            <div>
+              <label style={LABEL_STYLE}>Para Birimi</label>
+              <select style={INPUT_STYLE} value={supplierForm.currency} onChange={e=>setSupplierForm({...supplierForm, currency: e.target.value})}>
+                <option value="TRY">TRY</option>
+                <option value="USD">USD</option>
+                <option value="EUR">EUR</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label style={LABEL_STYLE}>Teslim Süresi (Gün)</label>
+            <input type="number" style={INPUT_STYLE} value={supplierForm.leadTimeDays} onChange={e=>setSupplierForm({...supplierForm, leadTimeDays: e.target.value})} />
+          </div>
+          <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+            <button onClick={() => setShowSupplierModal(false)} style={{ background: 'transparent', color: '#f1f5f9', border: '1px solid #1e293b', padding: '10px 16px', borderRadius: 8, cursor: 'pointer' }}>İptal</button>
+            <button onClick={handleAddSupplierToAVL} style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '10px 16px', borderRadius: 8, fontWeight: 700, cursor: 'pointer' }}>Ekle</button>
           </div>
         </div>
       </Modal>
