@@ -67,7 +67,35 @@ export default function PartsList() {
   });
 
   const exportCSV = () => {
-    toast.success('CSV Dışa başarım hazırlandı (simüle edildi)');
+    if (filtered.length === 0) return toast.error('Dışa aktarılacak veri bulunamadı');
+    
+    const headers = [
+      'Parça No', 'Ad', 'Kategori', 'Alt Kategori', 'Birim', 'Revizyon', 
+      'Mevcut Stok', 'Kritik Stok (Min)', 'Lokasyon', 'Durum', 'Kritik Mi'
+    ];
+    
+    const rows = filtered.map(p => [
+      p.partNumber, p.name, p.category, p.subCategory, p.unit, p.revision,
+      p.currentStock || 0, p.minStock || 0, p.warehouseLocation || '-', 
+      p.stockStatus || 'Sağlam', p.isCritical ? 'EVET' : 'HAYIR'
+    ]);
+
+    const csvContent = "\uFEFF" + [
+      headers.join(';'),
+      ...rows.map(row => row.join(';'))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Artegon_Malzeme_Listesi_${new Date().toISOString().slice(0,10)}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    toast.success('Excel (CSV) dosyası indirildi');
   };
 
   if (loading) return <Spinner />;

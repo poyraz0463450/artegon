@@ -11,6 +11,7 @@ import {
   PART_CATEGORIES, PART_SUB_CATEGORIES, PART_UNITS, REVISION_STATUSES, STOCK_STATUSES,
   formatNumber, formatDate, formatDateOnly, formatCurrency
 } from '../../utils/helpers';
+import { generateLotNumber } from '../../utils/autoGen';
 import { useAuth } from '../../context/AuthContext';
 import { 
   ChevronLeft, Save, Plus, History, Layers, Package, ShieldCheck, FileText, 
@@ -59,6 +60,7 @@ export default function PartDetail() {
   const [showSupplierModal, setShowSupplierModal] = useState(false);
   const [showDocumentModal, setShowDocumentModal] = useState(false);
   const [activeTab, setActiveTab] = useState('Genel');
+  const [isGeneratingLot, setIsGeneratingLot] = useState(false);
   
   // Related Data
   const [models, setModels] = useState([]);
@@ -208,7 +210,10 @@ export default function PartDetail() {
       await addStockMovement(movementData);
 
       const newStock = (part.currentStock || 0) + Number(lotForm.quantity);
-      setPart({ ...part, currentStock: newStock });
+      
+      // Part state update
+      const updatedPart = { ...part, currentStock: newStock };
+      setPart(updatedPart);
       await updatePart(id, { currentStock: newStock });
 
       toast.success('Lot başarıyla eklendi ve stok güncellendi');
@@ -219,6 +224,18 @@ export default function PartDetail() {
     } catch (e) {
       toast.error('Lot eklenirken bir hata oluştu');
       console.error(e);
+    }
+  };
+
+  const autoGenLot = async () => {
+    setIsGeneratingLot(true);
+    try {
+      const nextLot = await generateLotNumber();
+      setLotForm({ ...lotForm, lotNumber: nextLot });
+    } catch (err) {
+      toast.error('Lot numarası üretilemedi');
+    } finally {
+      setIsGeneratingLot(false);
     }
   };
 
@@ -251,24 +268,28 @@ export default function PartDetail() {
     const docData = {
       title: formData.get('title'),
       docNumber: formData.get('docNumber'),
-      revision: formData.get('revision'),
-      type: 'Teknik Resim',
+      revision: formData.get('revision') || 'A',
+      category: 'Teknik Resim', // Fixed category for this tab
       linkedPartId: id,
       linkedPartNumber: part.partNumber,
+      uploadedBy: userDoc?.displayName || 'Sistem',
+      uploadedAt: new Date().toISOString(),
       approvedBy: userDoc?.displayName || 'Sistem',
       approvedAt: new Date().toISOString(),
-      url: '#' // Placeholder for actual file upload
+      revisionStatus: 'Onaylandı',
+      isDownloadable: true,
+      url: '#' // Placeholder for actual file upload (Firebase Storage integration)
     };
     
     if (!docData.title || !docData.docNumber) return toast.error('Başlık ve numara zorunludur');
     
     try {
-      // In a real app, you'd upload to Storage first
-      // await addDocument(docData); 
+      await addDocument(docData);
       setDocs([{ id: Date.now().toString(), ...docData }, ...docs]);
       setShowDocumentModal(false);
       toast.success('Döküman başarıyla eklendi');
     } catch (e) {
+      console.error(e);
       toast.error('Hata oluştu');
     }
   };
@@ -415,7 +436,7 @@ export default function PartDetail() {
                       {PART_UNITS.map(u=><option key={u} value={u}>{u}</option>)}
                     </select>
                   </div>
-                  <div><label style={LABEL_STYLE}>Adet (Paket/Stok)</label><input type="number" style={INPUT_STYLE} value={part.quantity || 0} onChange={e=>setPart({...part,quantity:Number(e.target.value)})} disabled={!canEditGenel} /></div>
+                  <div><label style={LABEL_STYLE}>Mevcut Fiili Stok (Adet)</label><input type="number" style={{...INPUT_STYLE, fontWeight: 800, color: '#34d399'}} value={part.currentStock || 0} onChange={e=>setPart({...part,currentStock:Number(e.target.value)})} disabled={!canEditGenel} /></div>
                 </div>
               </div>
 
@@ -943,25 +964,37 @@ export default function PartDetail() {
       </div>
 
       {/* LOT ENTRY MODAL */}
-      <Modal isOpen={showLotModal} onClose={() => setShowLotModal(false)} title="Yeni Lot / Batch Girişi">
+      <Modal isOpen={showLotModal} onClose={() => setShowLotModal(false)} title="Yeni Lot Girişi Yap">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div>
-            <label style={LABEL_STYLE}>Lot Numarası <span style={{color: '#f87171'}}>*</span></label>
-            <input style={INPUT_STYLE} placeholder="Örn: 2026-A-001" value={lotForm.lotNumber} onChange={e=>setLotForm({...lotForm, lotNumber:e.target.value})} autoFocus />
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-            <div>
-              <label style={LABEL_STYLE}>Miktar <span style={{color: '#f87171'}}>*</span></label>
-              <input type="number" min="0.1" step="any" style={INPUT_STYLE} value={lotForm.quantity} onChange={e=>setLotForm({...lotForm, quantity:e.target.value})} />
+            <label style={LABEL_STYLE}>Lot Numarası</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input 
+                style={{ ...INPUT_STYLE, flex: 1, fontFamily: 'monospace' }} 
+                value={lotForm.lotNumber} 
+                onChange={e => setLotForm({ ...lotForm, lotNumber: e.target.value })} 
+                placeholder="Örn: LOT-2026-04-001"
+              />
+              <button 
+                 onClick={autoGenLot}
+                 disabled={isGeneratingLot}
+                 style={{ padding: '0 12px', background: '#1e293b', border: '1px solid #334155', borderRadius: 6, color: '#f1f5f9', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+              >
+                 {isGeneratingLot ? '...' : 'OTO ÜRET'}
+              </button>
             </div>
-            <div>
-              <label style={LABEL_STYLE}>Depo Lokasyonu</label>
-              <input style={INPUT_STYLE} placeholder="Örn: B1-R1-05" value={lotForm.warehouseLocation} onChange={e=>setLotForm({...lotForm, warehouseLocation:e.target.value})} />
-            </div>
           </div>
-          <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
-            <button onClick={() => setShowLotModal(false)} style={{ background: 'transparent', color: '#f1f5f9', border: '1px solid #1e293b', padding: '10px 16px', borderRadius: 8, cursor: 'pointer' }}>İptal</button>
-            <button onClick={handleAddBatch} style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '10px 16px', borderRadius: 8, fontWeight: 700, cursor: 'pointer' }}>Lotu Kaydet</button>
+          <div>
+            <label style={LABEL_STYLE}>Miktar ({part?.unit || 'Adet'})</label>
+            <input type="number" style={INPUT_STYLE} value={lotForm.quantity} onChange={e => setLotForm({ ...lotForm, quantity: e.target.value })} />
+          </div>
+          <div>
+            <label style={LABEL_STYLE}>Depo Lokasyonu</label>
+            <input style={INPUT_STYLE} value={lotForm.warehouseLocation} onChange={e => setLotForm({ ...lotForm, warehouseLocation: e.target.value })} placeholder="Örn: A-12-04" />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 12 }}>
+            <button onClick={() => setShowLotModal(false)} style={{ height: 38, padding: '0 16px', background: 'transparent', border: '1px solid #1e293b', borderRadius: 8, color: '#64748b', fontWeight: 600, cursor: 'pointer' }}>İptal</button>
+            <button onClick={handleAddBatch} style={{ height: 38, padding: '0 24px', background: '#3b82f6', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Stok Girişi Yap</button>
           </div>
         </div>
       </Modal>
