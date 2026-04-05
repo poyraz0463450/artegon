@@ -12,6 +12,7 @@ import StockMovements from './pages/parts/StockMovements';
 
 // Module 2: MES
 import WorkCenters from './pages/workorders/WorkCenters';
+import Machines from './pages/workorders/Machines';
 import WorkOrderList from './pages/workorders/WorkOrderList';
 import WorkOrderDetail from './pages/workorders/WorkOrderDetail';
 import GanttPlan from './pages/workorders/GanttPlan';
@@ -21,6 +22,8 @@ import InspectionPlans from './pages/qc/InspectionPlans';
 import InspectionsList from './pages/qc/InspectionsList';
 import InspectionDetail from './pages/qc/InspectionDetail';
 import NcrRecords from './pages/qc/NcrRecords';
+import NCRDetail from './pages/qc/NCRDetail';
+import MeasuringTools from './pages/qc/MeasuringTools';
 
 // Module 4: PDM (Documents)
 import DocumentsList from './pages/documents/DocumentsList';
@@ -28,10 +31,17 @@ import DocumentsList from './pages/documents/DocumentsList';
 // Module 5: SCM (Purchasing)
 import PurchasingDashboard from './pages/purchasing/PurchasingDashboard';
 import MRPDashboard from './pages/purchasing/MRPDashboard';
+import RFQModule from './pages/purchasing/RFQModule';
+import ASNList from './pages/purchasing/ASNList';
 import PurchaseRequests from './pages/purchasing/PurchaseRequests';
 import PurchaseOrders from './pages/purchasing/PurchaseOrders';
 import InventoryReceipts from './pages/purchasing/InventoryReceipts';
 import SuppliersList from './pages/purchasing/SuppliersList';
+import Invoices from './pages/purchasing/Invoices';
+
+// Module 6: Inventory
+import CycleCounts from './pages/inventory/CycleCounts';
+import Traceability from './pages/inventory/Traceability';
 
 // Admin
 import UserManagement from './pages/admin/UserManagement';
@@ -81,6 +91,7 @@ function AppRoutes() {
         
         {/* Üretim (MES) */}
         <Route path="work-centers" element={<WorkCenters />} />
+        <Route path="machines" element={<Machines />} />
         <Route path="work-orders" element={<WorkOrderList />} />
         <Route path="work-orders/:id" element={<WorkOrderDetail />} />
         <Route path="gantt" element={<GanttPlan />} />
@@ -90,22 +101,23 @@ function AppRoutes() {
         <Route path="qc/inspections" element={<InspectionsList />} />
         <Route path="qc/inspections/:id" element={<InspectionDetail />} />
         <Route path="qc/ncr" element={<NcrRecords />} />
-        <Route path="qc/tools" element={<ComingSoon title="Ölçüm Cihazları" />} />
+        <Route path="qc/ncr/:id" element={<NCRDetail />} />
+        <Route path="qc/tools" element={<MeasuringTools />} />
 
         {/* Satınalma (SCM) */}
         <Route path="purchasing" element={<PurchasingDashboard />} />
         <Route path="purchasing/mrp" element={<MRPDashboard />} />
-        <Route path="purchasing/rfq" element={<ComingSoon title="Teklif Toplama (RFQ)" />} />
+        <Route path="purchasing/rfq" element={<RFQModule />} />
         <Route path="purchasing/requests" element={<PurchaseRequests />} />
         <Route path="purchasing/orders" element={<PurchaseOrders />} />
-        <Route path="purchasing/asn" element={<ComingSoon title="ASN - Sevk Bildirimi" />} />
+        <Route path="purchasing/asn" element={<ASNList />} />
         <Route path="purchasing/receipts" element={<InventoryReceipts />} />
         <Route path="purchasing/suppliers" element={<SuppliersList />} />
-        <Route path="purchasing/invoices" element={<ComingSoon title="Faturalar" />} />
+        <Route path="purchasing/invoices" element={<Invoices />} />
 
         {/* Depo / Stok (New Section for Storage logic) */}
-        <Route path="inventory/cycle-counts" element={<ComingSoon title="Periyodik Sayım" />} />
-        <Route path="inventory/traceability" element={<ComingSoon title="İzlenebilirlik" />} />
+        <Route path="inventory/cycle-counts" element={<CycleCounts />} />
+        <Route path="inventory/traceability" element={<Traceability />} />
 
         {/* Dokümanlar (PDM) */}
         <Route path="documents" element={<DocumentsList />} />
@@ -113,6 +125,11 @@ function AppRoutes() {
 
         {/* Admin */}
         <Route path="admin/users" element={<UserManagement />} />
+
+        {/* Satış ve CRM */}
+        <Route path="sales/customers" element={<CustomersList />} />
+        <Route path="sales/orders" element={<SalesOrders />} />
+        <Route path="sales/shipping" element={<Shipping />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

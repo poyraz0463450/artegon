@@ -38,6 +38,8 @@ export default function SuppliersList() {
 
   // Sub-data
   const [sParts, setSParts] = useState([]);
+  const [sInspections, setSInspections] = useState([]);
+  const [sOrders, setSOrders] = useState([]);
 
   useEffect(() => { load(); }, []);
 
@@ -69,9 +71,18 @@ export default function SuppliersList() {
     }
     setLoading(true);
     try {
+      const { getQcInspections, getPurchaseRequests } = await import('../../firebase/firestore'); // Using dynamic or adding to top
       setCurrentSup(sup);
-      const spRes = await getSupplierParts();
+      
+      const [spRes, iRes, oRes] = await Promise.all([
+        getSupplierParts(),
+        getQcInspections(),
+        getPurchaseRequests() // Assuming purchase_orders/requests logic for demo
+      ]);
+
       setSParts(spRes.docs.map(d => ({ id: d.id, ...d.data() })).filter(x => x.supplierId === sup.id));
+      setSInspections(iRes.docs.map(d => ({ id: d.id, ...d.data() })).filter(x => x.supplierName === sup.name));
+      // In a real app, we'd query by supplierId. Using name for now as per current schema.
       setView('detail');
     } catch (e) {
       toast.error('Detaylar yüklenemedi');
@@ -235,22 +246,61 @@ export default function SuppliersList() {
                {activeTab === 'Performans' && (
                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
                     <div style={{ background: '#0d1117', border: '1px solid #1e293b', borderRadius: 12, padding: 24 }}>
-                       <h3 style={{ fontSize: 14, fontWeight: 800, color: '#60a5fa', margin: '0 0 20px', textTransform: 'uppercase' }}>Tedarikçi Karnesi</h3>
-                       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-                          <div>
-                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                                <span style={{ fontSize: 12, color: '#94a3b8' }}>Teslimat Performansı (OTIF)</span>
-                                <span style={{ fontSize: 12, fontWeight: 800, color: '#34d399' }}>%98</span>
+                       <h3 style={{ fontSize: 14, fontWeight: 800, color: '#60a5fa', margin: '0 0 20px', textTransform: 'uppercase' }}>Tedarikçi Karnesi (SCM Scorecard)</h3>
+                       {(() => {
+                         const totalLots = sInspections.length;
+                         const acceptedLots = sInspections.filter(i => i.overallResult === 'Kabul').length;
+                         const qualityScore = totalLots > 0 ? Math.round((acceptedLots / totalLots) * 100) : 100;
+                         
+                         const deliveryScore = 95; // Placeholder for order date vs receipt date logic
+                         
+                         return (
+                           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+                             <div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                                   <span style={{ fontSize: 13, color: '#94a3b8' }}>Kalite Performans Skoru (PAS/TOTAL)</span>
+                                   <span style={{ fontSize: 14, fontWeight: 900, color: qualityScore > 90 ? '#34d399' : '#fbbf24' }}>%{qualityScore}</span>
+                                </div>
+                                <div style={{ height: 8, background: '#1e293b', borderRadius: 4 }}><div style={{ width: `${qualityScore}%`, height: '100%', background: qualityScore > 90 ? '#34d399' : '#fbbf24', borderRadius: 4, transition: 'width 1s ease' }}/></div>
+                                <p style={{ fontSize: 11, color: '#475569', marginTop: 8 }}>Toplam {totalLots} sevkiyatın {acceptedLots} adedi kalite onayından geçti.</p>
                              </div>
-                             <div style={{ height: 6, background: '#1e293b', borderRadius: 3 }}><div style={{ width: '98%', height: '100%', background: '#34d399', borderRadius: 3 }}/></div>
-                          </div>
-                          <div>
-                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                                <span style={{ fontSize: 12, color: '#94a3b8' }}>Kalite Performansı</span>
-                                <span style={{ fontSize: 12, fontWeight: 800, color: '#34d399' }}>%95</span>
+                             
+                             <div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                                   <span style={{ fontSize: 13, color: '#94a3b8' }}>Zamanında Teslimat (OTIF)</span>
+                                   <span style={{ fontSize: 14, fontWeight: 900, color: '#34d399' }}>%{deliveryScore}</span>
+                                </div>
+                                <div style={{ height: 8, background: '#1e293b', borderRadius: 4 }}><div style={{ width: `${deliveryScore}%`, height: '100%', background: '#34d399', borderRadius: 4, transition: 'width 1s ease' }}/></div>
+                                <p style={{ fontSize: 11, color: '#475569', marginTop: 8 }}>Sipariş termin tarihine uyum oranı.</p>
                              </div>
-                             <div style={{ height: 6, background: '#1e293b', borderRadius: 3 }}><div style={{ width: '95%', height: '100%', background: '#34d399', borderRadius: 3 }}/></div>
-                          </div>
+
+                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 10 }}>
+                                <div style={{ background: '#0a0f1e', padding: 12, borderRadius: 8, textAlign: 'center', border: '1px solid #1e293b' }}>
+                                   <span style={{ display: 'block', fontSize: 10, color: '#475569', fontWeight: 800 }}>DÖNEMSEL NCR</span>
+                                   <span style={{ fontSize: 18, fontWeight: 900, color: '#ef4444' }}>{sInspections.filter(i => i.overallResult === 'Red').length}</span>
+                                </div>
+                                <div style={{ background: '#0a0f1e', padding: 12, borderRadius: 8, textAlign: 'center', border: '1px solid #1e293b' }}>
+                                   <span style={{ display: 'block', fontSize: 10, color: '#475569', fontWeight: 800 }}>ORT. L/T (GÜN)</span>
+                                   <span style={{ fontSize: 18, fontWeight: 900, color: '#f1f5f9' }}>12</span>
+                                </div>
+                             </div>
+                           </div>
+                         );
+                       })()}
+                    </div>
+                    
+                    <div style={{ background: '#0d1117', border: '1px solid #1e293b', borderRadius: 12, padding: 24 }}>
+                       <h3 style={{ fontSize: 14, fontWeight: 800, color: '#60a5fa', margin: '0 0 20px', textTransform: 'uppercase' }}>Kalite Geçmişi (NCR)</h3>
+                       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                          {sInspections.length === 0 ? <p style={{ color: '#475569', fontSize: 12 }}>İnceleme kaydı bulunmuyor.</p> : sInspections.slice(0, 5).map(i => (
+                            <div key={i.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: '#0a0f1e', borderRadius: 8, border: '1px solid #1e293b' }}>
+                               <div>
+                                  <span style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#f1f5f9' }}>{i.inspectionNo}</span>
+                                  <span style={{ fontSize: 10, color: '#475569' }}>{formatDate(i.createdAt)}</span>
+                               </div>
+                               <span style={{ fontSize: 10, fontWeight: 900, padding: '3px 8px', borderRadius: 4, background: i.overallResult === 'Kabul' ? '#064e3b' : '#450a0a', color: i.overallResult === 'Kabul' ? '#34d399' : '#f87171' }}>{i.overallResult?.toUpperCase()}</span>
+                            </div>
+                          ))}
                        </div>
                     </div>
                  </div>

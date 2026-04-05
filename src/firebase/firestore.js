@@ -106,10 +106,21 @@ export const updatePurchaseRequest = (id, data) => updateData('purchase_requests
 export const deletePurchaseRequest = (id) => deleteData('purchase_requests', id);
 
 export const getPurchaseOrders = () => getCollection('purchase_orders');
-export const getPurchaseOrderById = (id) => getById('purchase_orders', id);
 export const addPurchaseOrder = (data) => addData('purchase_orders', data);
 export const updatePurchaseOrder = (id, data) => updateData('purchase_orders', id, data);
 export const deletePurchaseOrder = (id) => deleteData('purchase_orders', id);
+
+export const getRFQList = async () => ({ docs: [] });
+export const getASNList = async () => ({ docs: [] });
+
+export const getRFQs = () => getCollection('rfq');
+export const getRFQById = (id) => getById('rfq', id);
+export const addRFQ = (data) => addData('rfq', data);
+export const updateRFQ = (id, data) => updateData('rfq', id, data);
+
+export const getASNs = () => getCollection('asn');
+export const addASN = (data) => addData('asn', data);
+export const updateASN = (id, data) => updateData('asn', id, data);
 
 export const getSupplierParts = () => getCollection('supplier_parts');
 export const addSupplierPart = (data) => addData('supplier_parts', data);
@@ -125,5 +136,34 @@ export const getPriceHistory = () => getDocs(query(collection(db, 'price_history
 export const addPriceHistory = (data) => addDoc(collection(db, 'price_history'), { ...data, createdAt: serverTimestamp() });
 
 export const getMachines = () => getCollection('machines');
-export const deleteUserDoc = (id) => deleteUser(id);
+export const addMachine = (data) => addData('machines', data);
+export const updateMachine = (id, data) => updateData('machines', id, data);
+export const deleteMachine = (id) => deleteData('machines', id);
+
+export const getWorkLogs = (woId) => getDocs(query(collection(db, 'work_logs'), where('workOrderId', '==', woId), orderBy('createdAt', 'desc')));
+export const addWorkLog = (data) => addData('work_logs', data);
+export const updateWorkLog = (id, data) => updateData('work_logs', id, data);
+
+export const getCycleCounts = () => getCollection('cycle_counts');
+export const addCycleCount = (data) => addData('cycle_counts', data);
+export const updateCycleCount = (id, data) => updateData('cycle_counts', id, data);
+
 export const getUsers = () => getAllUsers();
+export const deleteUserDoc = (id) => deleteUser(id);
+
+// ── MODULE 7: SALES (CRM & Orders) ───────────────────────────────────────────
+export const getCustomers = () => getCollection('customers');
+export const getCustomerById = (id) => getById('customers', id);
+export const addCustomer = (data) => addData('customers', data);
+export const updateCustomer = (id, data) => updateData('customers', id, data);
+export const deleteCustomer = (id) => deleteData('customers', id);
+
+export const getSalesOrders = () => getCollection('sales_orders');
+export const getSalesOrderById = (id) => getById('sales_orders', id);
+export const addSalesOrder = (data) => addData('sales_orders', data);
+export const updateSalesOrder = (id, data) => updateData('sales_orders', id, data);
+export const deleteSalesOrder = (id) => deleteData('sales_orders', id);
+
+export const getShipments = () => getCollection('shipments');
+export const addShipment = (data) => addData('shipments', data);
+export const updateShipment = (id, data) => updateData('shipments', id, data);

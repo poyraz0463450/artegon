@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { Spinner, EmptyState } from '../../components/ui/Shared';
 import { 
   getParts, getStockMovements, addStockMovement, updatePart, 
-  addInventoryBatch, getBatchesByPart 
+  addInventoryBatch, getBatchesByPart, updateInventoryBatch 
 } from '../../firebase/firestore';
 import { 
   MOVEMENT_TYPES, formatDate, formatNumber 
@@ -29,7 +29,8 @@ export default function StockMovements() {
   
   // Modal & Form
   const [modal, setModal] = useState(false);
-  const [form, setForm] = useState({ partId: '', movementType: 'Satınalmadan Giriş', qty: 1, fromLocation: '', toLocation: '', lotNumber: '', note: '', referenceNumber: '' });
+  const [form, setForm] = useState({ partId: '', movementType: 'Satınalmadan Giriş', qty: 1, fromLocation: '', toLocation: '', lotNumber: '', note: '', referenceNumber: '', selectedBatchId: '' });
+  const [availableBatches, setAvailableBatches] = useState([]);
   
   // Filters
   const [search, setSearch] = useState('');
@@ -49,6 +50,24 @@ export default function StockMovements() {
     } finally {
       setLoading(false);
     }
+  };
+
+  useEffect(() => {
+    if (form.partId) {
+      fetchBatches(form.partId);
+    } else {
+      setAvailableBatches([]);
+    }
+  }, [form.partId]);
+
+  const fetchBatches = async (pid) => {
+     try {
+        const res = await getBatchesByPart(pid);
+        const b = res.docs.map(d => ({ id: d.id, ...d.data() })).filter(x => x.remainingQty > 0 && x.qcStatus !== 'Red');
+        setAvailableBatches(b.sort((a, b) => new Date(a.receivedDate) - new Date(b.receivedDate)));
+     } catch (e) { 
+        console.error('Batch fetching error:', e); 
+     }
   };
 
   const handleSubmit = async (e) => {
@@ -79,7 +98,15 @@ export default function StockMovements() {
       // 2. Update Part Master Stock
       await updatePart(form.partId, { currentStock: newStock });
 
-      // 3. LOT Handling for Inputs
+      // 3. Batch Updates
+      if (isOutput && form.selectedBatchId) {
+          const batch = availableBatches.find(b => b.id === form.selectedBatchId);
+          if (batch) {
+             await updateInventoryBatch(batch.id, { remainingQty: Math.max(0, batch.remainingQty - finalQty) });
+          }
+      }
+
+      // 4. LOT Handling for Inputs
       if (isInput && form.movementType === 'Satınalmadan Giriş') {
          const year = new Date().getFullYear();
          const lot = `LOT-${year}-${Math.floor(Math.random()*10000).toString().padStart(4,'0')}`;
@@ -271,8 +298,31 @@ export default function StockMovements() {
               <input style={INPUT} value={form.referenceNumber} onChange={e => setForm({ ...form, referenceNumber: e.target.value })} placeholder="WO-001 / PO-001" />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 6 }}>LOT NUMARASI</label>
-              <input style={INPUT} value={form.lotNumber} onChange={e => setForm({ ...form, lotNumber: e.target.value })} placeholder="Opsiyonel" />
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 6 }}>LOT SEÇİMİ (FIFO)</label>
+              <select 
+                style={{ ...INPUT, border: form.selectedBatchId === availableBatches[0]?.id ? '1px solid #34d399' : '1px solid #334155' }} 
+                value={form.selectedBatchId} 
+                onChange={e => {
+                  const b = availableBatches.find(x => x.id === e.target.value);
+                  setForm({ ...form, selectedBatchId: e.target.value, lotNumber: b?.batchId || '' });
+                }}
+              >
+                <option value="">İsteğe bağlı seçim...</option>
+                {availableBatches.map((b, i) => (
+                  <option key={b.id} value={b.id}>
+                    {i === 0 ? '⭐ [EN ESKİ] ' : ''}{b.batchId} ({b.remainingQty} {parts.find(p=>p.id===form.partId)?.unit || 'Adet'}) - {formatDate(b.receivedDate)}
+                  </option>
+                ))}
+              </select>
+              {availableBatches.length > 0 && (
+                <p style={{ fontSize: 10, color: '#475569', marginTop: 4 }}>
+                   Savunma sanayii gereği en eski lotu kullanmanız önerilir.
+                </p>
+              )}
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 6 }}>MANUEL LOT / SERİ</label>
+              <input style={INPUT} value={form.lotNumber} onChange={e => setForm({ ...form, lotNumber: e.target.value })} placeholder="Otomatik dolacaktır" />
             </div>
           </div>
           <div>

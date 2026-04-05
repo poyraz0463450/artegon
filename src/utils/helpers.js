@@ -103,3 +103,45 @@ export const GRN_STATUSES = ['Bekliyor', 'Kısmi Kabul', 'Tam Kabul', 'Reddedild
 export function generateWONumber(existing = []) {
   return generateDocNumber('WO', existing);
 }
+
+export function getAQLSampling(lotSize, aql = 1.0) {
+  // ISO 2859-1 Level II Normal Inspection - Code Letter Mapping
+  const getCode = (lot) => {
+    if (lot <= 8) return 'A';
+    if (lot <= 15) return 'B';
+    if (lot <= 25) return 'C';
+    if (lot <= 50) return 'D';
+    if (lot <= 90) return 'E';
+    if (lot <= 150) return 'F';
+    if (lot <= 280) return 'G';
+    if (lot <= 500) return 'H';
+    if (lot <= 1200) return 'J';
+    if (lot <= 3200) return 'K';
+    return 'L';
+  };
+
+  const code = getCode(lotSize);
+  
+  // Sample Size per Code
+  const sampleSizes = { 
+    A: 2, B: 3, C: 5, D: 8, E: 13, F: 20, G: 32, H: 50, J: 80, K: 125, L: 200 
+  };
+  
+  // Ac/Re mapping (Simple version for common AQLs)
+  const table = {
+    '1.0': { A:[0,1], B:[0,1], C:[0,1], D:[0,1], E:[0,1], F:[0,1], G:[0,1], H:[1,2], J:[2,3], K:[3,4], L:[5,6] },
+    '1.5': { A:[0,1], B:[0,1], C:[0,1], D:[0,1], E:[0,1], F:[0,1], G:[1,2], H:[2,3], J:[3,4], K:[5,6], L:[7,8] },
+    '2.5': { A:[0,1], B:[0,1], C:[0,1], D:[0,1], E:[1,2], F:[1,2], G:[2,3], H:[3,4], J:[5,6], K:[7,8], L:[10,11] },
+    '4.0': { A:[0,1], B:[0,1], C:[0,1], D:[1,2], E:[1,2], F:[2,3], G:[3,4], H:[5,6], J:[7,8], K:[10,11], L:[14,15] }
+  };
+
+  const aqlKey = String(parseFloat(aql).toFixed(1));
+  const [ac, re] = table[aqlKey]?.[code] || [0, 1];
+  
+  return {
+    code,
+    sampleSize: sampleSizes[code] || lotSize,
+    ac,
+    re
+  };
+}

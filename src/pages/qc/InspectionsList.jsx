@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Spinner, EmptyState } from '../../components/ui/Shared';
 import { 
-  getQcInspections, getParts, getWorkOrders 
+  getQcInspections, getParts, getWorkOrders, getInventoryBatches 
 } from '../../firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
 import { 
@@ -22,17 +22,20 @@ export default function InspectionsList() {
   const navigate = useNavigate();
   
   const [inspections, setInspections] = useState([]);
+  const [pendingBatches, setPendingBatches] = useState([]);
   const [parts, setParts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('completed'); // completed | pending
   const [search, setSearch] = useState('');
 
   useEffect(() => { load(); }, []);
 
   const load = async () => {
     try {
-      const [iRes, pRes] = await Promise.all([getQcInspections(), getParts()]);
+      const [iRes, pRes, bRes] = await Promise.all([getQcInspections(), getParts(), getInventoryBatches()]);
       setInspections(iRes.docs.map(d => ({ id: d.id, ...d.data() })));
       setParts(pRes.docs.map(d => ({ id: d.id, ...d.data() })));
+      setPendingBatches(bRes.docs.map(d => ({ id: d.id, ...d.data() })).filter(b => b.status === 'Karantina'));
     } catch (e) {
       toast.error('Muayene kayıtları yüklenemedi');
     } finally {
@@ -63,6 +66,13 @@ export default function InspectionsList() {
           </button>
         )}
       </div>
+      <div style={{ display: 'flex', gap: 20, marginBottom: 24, borderBottom: '1px solid #1e293b' }}>
+        <button onClick={() => setActiveTab('completed')} style={{ padding: '12px 24px', background: 'none', border: 'none', borderBottom: activeTab === 'completed' ? '2px solid #dc2626' : 'none', color: activeTab === 'completed' ? '#fff' : '#475569', cursor: 'pointer', fontWeight: 800, fontSize: 13 }}>TAMAMLANANLAR</button>
+        <button onClick={() => setActiveTab('pending')} style={{ padding: '12px 24px', background: 'none', border: 'none', borderBottom: activeTab === 'pending' ? '2px solid #dc2626' : 'none', color: activeTab === 'pending' ? '#fff' : '#475569', cursor: 'pointer', fontWeight: 800, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+          BEKLEYENLER
+          {pendingBatches.length > 0 && <span style={{ background: '#dc2626', color: '#fff', fontSize: 10, padding: '2px 6px', borderRadius: 10 }}>{pendingBatches.length}</span>}
+        </button>
+      </div>
 
       <div style={{ background: '#0d1117', border: '1px solid #1e293b', borderRadius: 12, padding: 16, marginBottom: 20, display: 'flex', gap: 12, alignItems: 'center' }}>
         <div style={{ position: 'relative', flex: 1 }}>
@@ -82,61 +92,100 @@ export default function InspectionsList() {
       <div style={{ background: '#0d1117', border: '1px solid #1e293b', borderRadius: 12, overflow: 'hidden shadow-2xl' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
-            <tr>
-              <th style={TH}>QC Rapor No</th>
-              <th style={TH}>Tarih</th>
-              <th style={TH}>Muayene Türü</th>
-              <th style={TH}>Parça / Ürün</th>
-              <th style={TH}>Lot No / İş Emri</th>
-              <th style={TH}>Müfettiş</th>
-              <th style={{ ...TH, textAlign: 'center' }}>Sonuç</th>
-              <th style={{ ...TH, width: 40 }}></th>
-            </tr>
+            {activeTab === 'completed' ? (
+              <tr>
+                <th style={TH}>QC Rapor No</th>
+                <th style={TH}>Tarih</th>
+                <th style={TH}>Muayene Türü</th>
+                <th style={TH}>Parça / Ürün</th>
+                <th style={TH}>Lot No / İş Emri</th>
+                <th style={TH}>Müfettiş</th>
+                <th style={{ ...TH, textAlign: 'center' }}>Sonuç</th>
+                <th style={{ ...TH, width: 40 }}></th>
+              </tr>
+            ) : (
+              <tr>
+                <th style={TH}>Giriş Tarihi</th>
+                <th style={TH}>Parça / Ürün</th>
+                <th style={TH}>Lot No</th>
+                <th style={{ ...TH, textAlign: 'right' }}>Lot Miktarı</th>
+                <th style={TH}>Tedarikçi / Kaynak</th>
+                <th style={{ ...TH, textAlign: 'right' }}>İşlem</th>
+              </tr>
+            )}
           </thead>
           <tbody>
-            {filtered.length === 0 ? <tr><td colSpan={8} style={{ padding: 48 }}><EmptyState message="Muayene kaydı bulunamadı." /></td></tr> : filtered.map(ins => {
-              const p = parts.find(x => x.id === ins.partId);
-              const isOk = ins.overallResult === 'Kabul';
-              return (
-                <tr key={ins.id} onClick={() => navigate(`/qc/inspections/${ins.id}`)} style={{ cursor: 'pointer' }} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.02)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                  <td style={{ ...TD, fontFamily: 'monospace', fontWeight: 800, color: '#f1f5f9' }}>{ins.inspectionNo || ins.id.slice(0,8).toUpperCase()}</td>
-                  <td style={TD}>{formatDateOnly(ins.createdAt || ins.inspectionDate)}</td>
-                  <td style={TD}>
-                    <span style={{ fontSize: 10, fontWeight: 800, padding: '3px 8px', borderRadius: 4, background: '#111827', color: '#60a5fa' }}>{ins.inspectionType?.toUpperCase() || 'PROSES'}</span>
-                  </td>
-                  <td style={TD}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                       <div style={{ width: 32, height: 32, borderRadius: 6, background: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
-                          <Target size={16} />
+            {activeTab === 'completed' ? (
+              filtered.length === 0 ? <tr><td colSpan={8} style={{ padding: 48 }}><EmptyState message="Muayene kaydı bulunamadı." /></td></tr> : filtered.map(ins => {
+                const p = parts.find(x => x.id === ins.partId);
+                const isOk = ins.overallResult === 'Kabul';
+                return (
+                  <tr key={ins.id} onClick={() => navigate(`/qc/inspections/${ins.id}`)} style={{ cursor: 'pointer' }} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.02)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                    <td style={{ ...TD, fontFamily: 'monospace', fontWeight: 800, color: '#f1f5f9' }}>{ins.inspectionNo || ins.id.slice(0,8).toUpperCase()}</td>
+                    <td style={TD}>{formatDateOnly(ins.createdAt || ins.inspectionDate)}</td>
+                    <td style={TD}>
+                      <span style={{ fontSize: 10, fontWeight: 800, padding: '3px 8px', borderRadius: 4, background: '#111827', color: '#60a5fa' }}>{ins.inspectionType?.toUpperCase() || 'PROSES'}</span>
+                    </td>
+                    <td style={TD}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                         <div style={{ width: 32, height: 32, borderRadius: 6, background: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
+                            <Target size={16} />
+                         </div>
+                         <div>
+                            <p style={{ margin: 0, fontWeight: 700, color: '#f1f5f9' }}>{p?.partNumber || '—'}</p>
+                            <p style={{ margin: 0, fontSize: 11, color: '#475569' }}>{p?.name || 'Bilinmiyor'}</p>
+                         </div>
+                      </div>
+                    </td>
+                    <td style={TD}>
+                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                         <span style={{ fontSize: 11, fontWeight: 700, color: '#e2e8f0', fontFamily: 'monospace' }}>{ins.lotNumber || '—'}</span>
+                         {ins.workOrderNo && <span style={{ fontSize: 10, color: '#475569' }}>İş Emri: {ins.workOrderNo}</span>}
+                      </div>
+                    </td>
+                    <td style={TD}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                         <div style={{ width: 18, height: 18, borderRadius: '50%', background: '#1e293b', fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{ins.inspectorName?.[0]}</div>
+                         <span style={{ fontSize: 11 }}>{ins.inspectorName || 'N/A'}</span>
+                      </div>
+                    </td>
+                    <td style={{ ...TD, textAlign: 'center' }}>
+                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 6, background: isOk ? '#065f46' : '#450a0a', color: isOk ? '#34d399' : '#f87171', fontSize: 11, fontWeight: 800 }}>
+                          {isOk ? <CheckCircle2 size={12}/> : <AlertTriangle size={12}/>}
+                          {ins.overallResult?.toUpperCase()}
                        </div>
-                       <div>
-                          <p style={{ margin: 0, fontWeight: 700, color: '#f1f5f9' }}>{p?.partNumber || '—'}</p>
-                          <p style={{ margin: 0, fontSize: 11, color: '#475569' }}>{p?.name || 'Bilinmiyor'}</p>
-                       </div>
-                    </div>
-                  </td>
-                  <td style={TD}>
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                       <span style={{ fontSize: 11, fontWeight: 700, color: '#e2e8f0', fontFamily: 'monospace' }}>{ins.lotNumber || '—'}</span>
-                       {ins.workOrderNo && <span style={{ fontSize: 10, color: '#475569' }}>İş Emri: {ins.workOrderNo}</span>}
-                    </div>
-                  </td>
-                  <td style={TD}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                       <div style={{ width: 18, height: 18, borderRadius: '50%', background: '#1e293b', fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{ins.inspectorName?.[0]}</div>
-                       <span style={{ fontSize: 11 }}>{ins.inspectorName || 'N/A'}</span>
-                    </div>
-                  </td>
-                  <td style={{ ...TD, textAlign: 'center' }}>
-                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 6, background: isOk ? '#065f46' : '#450a0a', color: isOk ? '#34d399' : '#f87171', fontSize: 11, fontWeight: 800 }}>
-                        {isOk ? <CheckCircle2 size={12}/> : <AlertTriangle size={12}/>}
-                        {ins.overallResult?.toUpperCase()}
-                     </div>
-                  </td>
-                  <td style={TD}><ArrowRight size={16} color="#334155" /></td>
-                </tr>
-              );
-            })}
+                    </td>
+                    <td style={TD}><ArrowRight size={16} color="#334155" /></td>
+                  </tr>
+                );
+              })
+            ) : (
+              pendingBatches.length === 0 ? <tr><td colSpan={6} style={{ padding: 48 }}><EmptyState message="Bekleyen muayene bulunmuyor." /></td></tr> : pendingBatches.map(batch => {
+                const p = parts.find(x => x.id === batch.partId);
+                return (
+                  <tr key={batch.id}>
+                    <td style={TD}>{formatDateOnly(batch.entryDate || batch.createdAt)}</td>
+                    <td style={TD}>
+                      <div>
+                        <p style={{ margin: 0, fontWeight: 700, color: '#f1f5f9' }}>{p?.partNumber || '—'}</p>
+                        <p style={{ margin: 0, fontSize: 11, color: '#475569' }}>{p?.name || '—'}</p>
+                      </div>
+                    </td>
+                    <td style={{ ...TD, fontFamily: 'monospace', fontWeight: 800 }}>{batch.lotNumber}</td>
+                    <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: '#f1f5f9' }}>{batch.quantity} {p?.unit}</td>
+                    <td style={TD}>{batch.supplierName || 'Şirket İçi'}</td>
+                    <td style={{ ...TD, textAlign: 'right' }}>
+                       <button 
+                        onClick={() => navigate('/qc/inspections/new', { state: { partId: batch.partId, lotNumber: batch.lotNumber, lotSize: batch.quantity, batchId: batch.id } })}
+                        style={{ height: 32, padding: '0 12px', background: '#dc2626', border: 'none', borderRadius: 4, color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                       >
+                         Muayene Başlat
+                       </button>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>

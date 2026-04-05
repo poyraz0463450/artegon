@@ -3,7 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Spinner, EmptyState } from '../../components/ui/Shared';
 import { 
   getWorkOrderById, updateWorkOrder, getWorkCenters, getParts, 
-  getQcInspections, getDocuments, addStockMovement, updatePart 
+  getQcInspections, getDocuments, addStockMovement, updatePart,
+  addWorkLog, getWorkLogs, getBatchesByPart, updateInventoryBatch 
 } from '../../firebase/firestore';
 import { 
   WO_STATUS_FLOW, formatDate, formatNumber, WO_OPERATIONS 
@@ -43,6 +44,8 @@ export default function WorkOrderDetail() {
   const [allParts, setAllParts] = useState([]);
   const [inspections, setInspections] = useState([]);
   const [docs, setDocs] = useState([]);
+  const [workLogs, setWorkLogs] = useState([]);
+  const [activeTimer, setActiveTimer] = useState(null); // { opIdx, startTime }
 
   useEffect(() => { load(); }, [id]);
 
@@ -56,13 +59,14 @@ export default function WorkOrderDetail() {
       }
       setOrder({ id: doc.id, ...doc.data() });
 
-      const [c, p, qc, d] = await Promise.all([
-        getWorkCenters(), getParts(), getQcInspections(), getDocuments()
+      const [c, p, qc, d, logs] = await Promise.all([
+        getWorkCenters(), getParts(), getQcInspections(), getDocuments(), getWorkLogs(id)
       ]);
       setCenters(c.docs.map(x => ({ id: x.id, ...x.data() })));
       setAllParts(p.docs.map(x => ({ id: x.id, ...x.data() })));
       setInspections(qc.docs.map(x => ({ id: x.id, ...x.data() })).filter(x => x.workOrderId === id));
       setDocs(d.docs.map(x => ({ id: x.id, ...x.data() })).filter(x => x.linkedPartId === doc.data().productPartId));
+      setWorkLogs(logs.docs.map(x => ({ id: x.id, ...x.data() })));
     } catch (e) {
       toast.error('Veriler yüklenemedi');
     } finally {
@@ -82,7 +86,10 @@ export default function WorkOrderDetail() {
   const updateOpStatus = async (idx, status) => {
     const ops = [...(order.operations || [])];
     ops[idx].status = status;
-    if (status === 'Bitti') ops[idx].completedAt = new Date().toISOString();
+    if (status === 'Bitti') {
+       ops[idx].completedAt = new Date().toISOString();
+       await backflushMaterials();
+    }
     setOrder({ ...order, operations: ops });
     
     // Auto status logic
@@ -93,6 +100,63 @@ export default function WorkOrderDetail() {
     await updateWorkOrder(id, { operations: ops, status: newWOStatus });
     if (newWOStatus !== order.status) setOrder(prev => ({ ...prev, status: newWOStatus }));
     toast.success(`Aşama '${ops[idx].name}' durumu güncellendi.`);
+  };
+
+  const startOperation = (idx) => {
+    setActiveTimer({ opIdx: idx, startTime: Date.now() });
+    const ops = [...(order.operations || [])];
+    ops[idx].status = 'Üretimde';
+    setOrder({ ...order, operations: ops });
+    toast.success('Zamanlayıcı başlatıldı');
+  };
+
+  const stopOperation = async (idx) => {
+    if (!activeTimer) return;
+    const durationMs = Date.now() - activeTimer.startTime;
+    const hours = (durationMs / (1000 * 60 * 60)).toFixed(4);
+
+    try {
+       await addWorkLog({
+         workOrderId: id,
+         operationName: order.operations[idx].name,
+         durationHours: Number(hours),
+         operator: userDoc?.displayName || userDoc?.email,
+         timestamp: new Date().toISOString()
+       });
+       setActiveTimer(null);
+       updateOpStatus(idx, 'Bitti');
+    } catch (e) {
+       toast.error('Log kaydedilemedi');
+    }
+  };
+
+  const backflushMaterials = async () => {
+    if (!order.components?.length) return;
+    toast.loading('Malzemeler düşülüyor...', { id: 'bf' });
+    try {
+       for (const comp of order.components) {
+          const needed = comp.qty * order.quantity;
+          const res = await getBatchesByPart(comp.partId);
+          const batches = res.docs.map(d=>({id:d.id, ...d.data()})).sort((a,b)=> new Date(a.receivedDate) - new Date(b.receivedDate));
+          
+          let remainingToDeduct = needed;
+          for (const batch of batches) {
+             if (remainingToDeduct <= 0) break;
+             const take = Math.min(batch.remainingQty, remainingToDeduct);
+             await updateInventoryBatch(batch.id, { remainingQty: batch.remainingQty - take });
+             remainingToDeduct -= take;
+          }
+          // Update master part stock
+          const p = allParts.find(x => x.id === comp.partId);
+          if (p) {
+             await updatePart(comp.partId, { currentStock: Math.max(0, p.currentStock - needed) });
+          }
+       }
+       toast.success('BOM malzemeleri FIFO ile düşüldü.', { id: 'bf' });
+       load();
+    } catch (e) {
+       toast.error('Düşüm hatası', { id: 'bf' });
+    }
   };
 
   const addOperation = () => {
@@ -278,23 +342,36 @@ export default function WorkOrderDetail() {
                                 </div>
                                 
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                                   {canOperate && (
-                                     <select 
-                                       style={{ ...INPUT_STYLE, width: 150, height: 34, fontSize: 12, borderColor: isRunning ? '#fbbf24' : '#1e293b' }} 
-                                       value={op.status} 
-                                       onChange={e => updateOpStatus(idx, e.target.value)}
-                                     >
-                                        <option value="Beklemede">Beklemede</option>
-                                        <option value="Hazırlık">Hazırlık</option>
-                                        <option value="Üretimde">Üretimde</option>
-                                        <option value="Bitti">Bitti (Kabul)</option>
-                                        <option value="Durduruldu">Durduruldu</option>
-                                     </select>
-                                   )}
-                                   {canEdit && (
-                                     <button onClick={() => removeOperation(idx)} style={{ background: 'transparent', border: 'none', color: '#450a0a', cursor: 'pointer' }}><Trash2 size={14}/></button>
-                                   )}
-                                </div>
+                                    {canOperate && !isDone && (
+                                      <div style={{ display: 'flex', gap: 8 }}>
+                                         {isRunning && activeTimer?.opIdx === idx ? (
+                                           <button onClick={() => stopOperation(idx)} style={{ height: 34, padding: '0 16px', background: '#dc2626', border: 'none', borderRadius: 6, color: 'white', fontSize: 11, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                              <Clock size={14} className="spin-slow" /> DURDUR & BİTİR
+                                           </button>
+                                         ) : (
+                                           <button onClick={() => startOperation(idx)} disabled={activeTimer} style={{ height: 34, padding: '0 16px', background: '#1e3a8a', border: 'none', borderRadius: 6, color: '#60a5fa', fontSize: 11, fontWeight: 800, cursor: activeTimer ? 'not-allowed' : 'pointer', opacity: activeTimer ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                              <Play size={14}/> BAŞLAT
+                                           </button>
+                                         )}
+                                      </div>
+                                    )}
+                                    {canEdit && (
+                                      <select 
+                                        style={{ ...INPUT_STYLE, width: 150, height: 34, fontSize: 12, borderColor: isRunning ? '#fbbf24' : '#1e293b' }} 
+                                        value={op.status} 
+                                        onChange={e => updateOpStatus(idx, e.target.value)}
+                                      >
+                                         <option value="Beklemede">Beklemede</option>
+                                         <option value="Hazırlık">Hazırlık</option>
+                                         <option value="Üretimde">Üretimde</option>
+                                         <option value="Bitti">Bitti (Kabul)</option>
+                                         <option value="Durduruldu">Durduruldu</option>
+                                      </select>
+                                    )}
+                                    {canEdit && (
+                                      <button onClick={() => removeOperation(idx)} style={{ background: 'transparent', border: 'none', color: '#450a0a', cursor: 'pointer' }}><Trash2 size={14}/></button>
+                                    )}
+                                 </div>
                              </div>
                           </div>
                        )

@@ -261,11 +261,16 @@ export default function PurchaseRequests() {
            <div><label style={LABEL_STYLE}>Kullanım Gerekçesi / Notlar</label><textarea style={{ ...INPUT, height: 80, padding: 12, resize: 'none' }} value={form.notes} onChange={e=>setForm({...form, notes: e.target.value})} placeholder="Bu parça hangi iş emri veya depo eksiği için isteniyor?" /></div>
 
            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
-              {editId && form.status === 'Onaylandı' && canEdit && (
-                <button type="button" onClick={() => convertToPO(form)} style={{ display: 'flex', alignItems: 'center', gap: 8, height: 40, padding: '0 20px', background: '#0e7490', border: 'none', borderRadius: 8, color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-                   <RefreshCcw size={16}/> Sipariş Oluştur (Generate PO)
-                </button>
-              )}
+               {editId && form.status === 'Onaylandı' && canEdit && (
+                 <div style={{ display: 'flex', gap: 12 }}>
+                    <button type="button" onClick={() => convertToPO(form)} style={{ display: 'flex', alignItems: 'center', gap: 8, height: 40, padding: '0 20px', background: '#0e7490', border: 'none', borderRadius: 8, color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                       <ShoppingCart size={16}/> Sipariş Oluştur
+                    </button>
+                    <button type="button" onClick={() => navigate('/purchasing/rfq')} style={{ display: 'flex', alignItems: 'center', gap: 8, height: 40, padding: '0 20px', background: '#3b82f6', border: 'none', borderRadius: 8, color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                       <Scale size={16}/> Teklif Topla (RFQ)
+                    </button>
+                 </div>
+               )}
               <div style={{ display: 'flex', gap: 12, marginLeft: 'auto' }}>
                  <button type="button" onClick={() => setModal(false)} style={{ height: 40, padding: '0 24px', background: 'transparent', border: '1px solid #334155', borderRadius: 8, color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>İptal</button>
                  <button type="submit" style={{ height: 40, padding: '0 32px', background: '#dc2626', border: 'none', borderRadius: 8, color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Kaydet</button>

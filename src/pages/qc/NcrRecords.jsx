@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Spinner, EmptyState } from '../../components/ui/Shared';
 import { 
   getNcrRecords, getParts, updateNcrRecord, addNcrRecord 
@@ -20,15 +21,13 @@ const LABEL_STYLE = { display: 'block', fontSize: 11, fontWeight: 700, color: '#
 
 export default function NcrRecords() {
   const { isAdmin, isKalite } = useAuth();
+  const navigate = useNavigate();
   const canEdit = isAdmin || isKalite;
   
+  // Modal for Disposition / Analysis (Now redundant but keeping state for small things or just removing)
   const [ncrs, setNcrs] = useState([]);
   const [parts, setParts] = useState([]);
   const [loading, setLoading] = useState(true);
-  
-  // Modal for Disposition / Analysis
-  const [modal, setModal] = useState(false);
-  const [selNcr, setSelNcr] = useState(null);
   const [search, setSearch] = useState('');
 
   useEffect(() => { load(); }, []);
@@ -118,7 +117,7 @@ export default function NcrRecords() {
               const p = parts.find(x => x.id === n.partId);
               const ss = getStatusStyle(n.status);
               return (
-                <tr key={n.id} onClick={() => { setSelNcr(n); setModal(true); }} style={{ cursor: 'pointer' }} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.02)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                <tr key={n.id} onClick={() => navigate(`/qc/ncr/${n.id}`)} style={{ cursor: 'pointer' }} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.02)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
                   <td style={{ ...TD, fontFamily: 'monospace', fontWeight: 800, color: '#f1f5f9' }}>{n.id.slice(0,8).toUpperCase()}</td>
                   <td style={TD}>{formatDateOnly(n.createdAt)}</td>
                   <td style={TD}>
@@ -150,51 +149,6 @@ export default function NcrRecords() {
           </tbody>
         </table>
       </div>
-
-      <Modal open={modal} onClose={() => setModal(false)} title="NCR Analizi & Karar Mekanizması" width={800}>
-        {selNcr && (
-           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                 <div style={CARD_STYLE}>
-                    <h4 style={{ ...LABEL_STYLE, color: '#60a5fa', marginBottom: 12 }}>Uygunsuzluk Detayı</h4>
-                    <div style={{ fontSize: 13, color: '#94a3b8' }}>
-                       <p style={{ margin: '0 0 8px' }}><strong>Açıklama:</strong> {selNcr.description}</p>
-                       <p style={{ margin: '0 0 8px' }}><strong>Tarih:</strong> {formatDateOnly(selNcr.createdAt)}</p>
-                       <p style={{ margin: '0 0 8px' }}><strong>Bildiren:</strong> {selNcr.reportedBy || 'Kalite Sorumlusu'}</p>
-                    </div>
-                 </div>
-                 <div style={CARD_STYLE}>
-                    <h4 style={{ ...LABEL_STYLE, color: '#60a5fa', marginBottom: 12 }}>Süreç Durumu Management</h4>
-                    <label style={LABEL_STYLE}>STÁTÜ</label>
-                    <select style={INPUT} value={selNcr.status} onChange={e => setSelNcr({...selNcr, status: e.target.value})}>
-                       {['Yeni', 'Analizde', 'Dispositioned', 'Kapalı'].map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                    <label style={{ ...LABEL_STYLE, marginTop: 12 }}>KARAR (DISPOSITION)</label>
-                    <select style={INPUT} value={selNcr.disposition || ''} onChange={e => setSelNcr({...selNcr, disposition: e.target.value})}>
-                       <option value="">Seçin...</option>
-                       <option value="Scrap">Hurda (Scrap)</option>
-                       <option value="Rework">Yeniden İşlem (Rework)</option>
-                       <option value="Use-As-Is">Olduğu Gibi Kullan</option>
-                       <option value="Return to Vendor">Tedarikçiye İade</option>
-                    </select>
-                 </div>
-              </div>
-
-              <div style={CARD_STYLE}>
-                 <h4 style={{ ...LABEL_STYLE, color: '#60a5fa', marginBottom: 12 }}>Root Cause Analysis (Kök Neden)</h4>
-                 <div style={{ borderLeft: '2px dashed #1e293b', paddingLeft: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <div><label style={{ fontSize: 10, color: '#475569' }}>ANALYST OBS:</label><textarea style={{ ...INPUT, height: 60, padding: 8 }} value={selNcr.analysis || ''} onChange={e => setSelNcr({...selNcr, analysis: e.target.value})} placeholder="Bulgu analizi..." /></div>
-                    <div><label style={{ fontSize: 10, color: '#475569' }}>CORRECTIVE ACTION:</label><textarea style={{ ...INPUT, height: 60, padding: 8 }} value={selNcr.capa || ''} onChange={e => setSelNcr({...selNcr, capa: e.target.value})} placeholder="Düzeltici faaliyet..." /></div>
-                 </div>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
-                 <button onClick={() => setModal(false)} style={{ height: 40, padding: '0 24px', background: 'transparent', border: '1px solid #334155', borderRadius: 8, color: '#64748b', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Kapat</button>
-                 <button onClick={handleUpdate} style={{ height: 40, padding: '0 32px', background: '#dc2626', border: 'none', borderRadius: 8, color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Analizi Kaydet</button>
-              </div>
-           </div>
-        )}
-      </Modal>
     </div>
   );
 }

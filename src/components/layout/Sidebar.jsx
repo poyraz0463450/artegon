@@ -8,7 +8,8 @@ import {
   LayoutDashboard, Package, ArrowLeftRight, Crosshair,
   ClipboardList, FileText, Users, LogOut, ShieldCheck,
   ShoppingCart, ListOrdered, FileSpreadsheet, Truck, FileCheck, Building2,
-  ChevronDown, ChevronRight, Binary, Settings, ShieldAlert, Cpu, HardDrive
+  ChevronDown, ChevronRight, Binary, Settings, ShieldAlert, Cpu, HardDrive,
+  ShoppingBag, Handshake
 } from 'lucide-react';
 
 const SECTIONS = [
@@ -57,9 +58,21 @@ const SECTIONS = [
     icon: Package,
     roles: ['admin', 'warehouse', 'kalite'],
     items: [
-      { to: '/stock-movements', label: 'Stok Hareketleri', icon: ArrowLeftRight },
-      { to: '/inventory/cycle-counts', label: 'Periyodik Sayım', icon: ListOrdered },
-      { to: '/inventory/traceability', label: 'İzlenebilirlik', icon: Crosshair },
+      {to: '/stock-movements', label: 'Stok Hareketleri', icon: ArrowLeftRight },
+      {to: '/machines', label: 'Makine İzleme', icon: Cpu },
+      {to: '/inventory/cycle-counts', label: 'Periyodik Sayım', icon: ListOrdered },
+      {to: '/inventory/traceability', label: 'İzlenebilirlik', icon: Crosshair },
+    ]
+  },
+  {
+    id: 'sales',
+    label: 'Satış ve CRM',
+    icon: ShoppingBag,
+    roles: ['admin', 'sales'],
+    items: [
+      { to: '/sales/customers', label: 'Müşteriler', icon: Handshake },
+      { to: '/sales/orders', label: 'Satış Siparişleri', icon: ListOrdered },
+      { to: '/sales/shipping', label: 'Sevkiyat (ASN-Out)', icon: Truck },
     ]
   },
   {

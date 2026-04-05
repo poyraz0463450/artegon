@@ -13,7 +13,7 @@ import {
   Target, Info, ArrowRight, FilePlus
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { formatDate } from '../../utils/helpers';
+import { formatDate, getAQLSampling } from '../../utils/helpers';
 
 const CARD_STYLE = { background: '#0d1117', border: '1px solid #1e293b', borderRadius: 12, padding: 20, marginBottom: 16 };
 const LABEL_STYLE = { display: 'block', fontSize: 11, fontWeight: 700, color: '#475569', marginBottom: 6, textTransform: 'uppercase' };
@@ -44,6 +44,8 @@ export default function InspectionDetail() {
         workOrderId: state.woId || '',
         workOrderNo: state.woNumber || '',
         lotNumber: state.lotNumber || '',
+        lotSize: state.lotSize || 0,
+        batchId: state.batchId || '',
         inspectorName: userDoc?.displayName || userDoc?.email || '',
         overallResult: 'Kabul',
         measurements: [],
@@ -133,6 +135,16 @@ export default function InspectionDetail() {
         toast.success('Kayıt güncellendi');
       }
 
+      // Logic: If result is KABUL, update inventory batch status
+      if (inspection.overallResult === 'Kabul' && inspection.batchId) {
+        await updateInventoryBatch(inspection.batchId, {
+          status: 'Sağlam', // Now available for production
+          qcReleasedDate: new Date().toISOString(),
+          qcReleasedBy: userDoc?.displayName
+        });
+        toast.success('Parçalar KARANTİNA -> SAĞLAM stoklara aktarıldı.');
+      }
+
       // Logic: If result is RED, suggest NCR
       if (inspection.overallResult === 'Red') {
         const createNcr = confirm('Muayene RED edildi. Otomatik Uygunsuzluk Raporu (NCR) oluşturulsun mu?');
@@ -146,7 +158,10 @@ export default function InspectionDetail() {
              status: 'Yeni',
              reportedBy: userDoc?.displayName,
              findings: inspection.measurements.filter(m => m.result === 'Red'),
-             createdAt: new Date().toISOString()
+             createdAt: new Date().toISOString(),
+             // 8D structure placeholders
+             d1_team: [], d2_problem: '', d3_containment: '', d4_root_cause: '', 
+             d5_corrective_action: '', d6_implementation: '', d7_prevention: '', d8_closure: ''
            });
            toast.success('NCR kaydı oluşturuldu.');
         }
@@ -282,24 +297,42 @@ export default function InspectionDetail() {
                             ))}
                          </div>
                       </div>
-                   </div>
-                </div>
-
-                <div style={CARD_STYLE}>
-                   <h4 style={{ fontSize: 13, fontWeight: 800, color: '#60a5fa', margin: '0 0 16px' }}>MIL-STD-105E Özeti</h4>
-                   <div style={{ background: '#0a0f1e', padding: 16, borderRadius: 8, border: '1px solid #1e293b' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: 12 }}>
-                         <span style={{ color: '#475569' }}>Numune Miktarı:</span>
-                         <span style={{ fontWeight: 800, color: '#f1f5f9' }}>{inspection.measurements.length > 0 ? '5 ADET' : '0'}</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: 12 }}>
-                         <span style={{ color: '#475569' }}>Kabul Sayısı (Ac):</span>
-                         <span style={{ fontWeight: 800, color: '#34d399' }}>0</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                         <span style={{ color: '#475569' }}>Red Sayısı (Re):</span>
-                         <span style={{ fontWeight: 800, color: '#f87171' }}>1</span>
-                      </div>
+                      <div style={CARD_STYLE}>
+                         <h4 style={{ fontSize: 13, fontWeight: 800, color: '#60a5fa', margin: '0 0 16px' }}>ISO 2859-1 (MIL-STD-105E)</h4>
+                         {(() => {
+                            const plan = plans.find(p => p.partId === inspection.partId);
+                            const aql = plan?.aqlLevel || 1.0;
+                            const { code, sampleSize, ac, re } = getAQLSampling(inspection.lotSize || 1, aql);
+                            return (
+                              <div style={{ background: '#0a0f1e', padding: 16, borderRadius: 8, border: '1px solid #1e293b' }}>
+                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: 12 }}>
+                                    <span style={{ color: '#475569' }}>Parti Büyüklüğü:</span>
+                                    <span style={{ fontWeight: 800, color: '#f1f5f9' }}>{inspection.lotSize || 0} ADET</span>
+                                 </div>
+                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: 12 }}>
+                                    <span style={{ color: '#475569' }}>Kod Harfi (Lvl II):</span>
+                                    <span style={{ fontWeight: 800, color: '#f1f5f9' }}>{code}</span>
+                                 </div>
+                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: 12 }}>
+                                    <span style={{ color: '#475569' }}>Numune Büyüklüğü:</span>
+                                    <span style={{ fontWeight: 900, color: '#3b82f6' }}>{sampleSize} ADET</span>
+                                 </div>
+                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: 12 }}>
+                                    <span style={{ color: '#475569' }}>Kabul Sayısı (Ac):</span>
+                                    <span style={{ fontWeight: 800, color: '#34d399' }}>{ac}</span>
+                                 </div>
+                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                                    <span style={{ color: '#475569' }}>Red Sayısı (Re):</span>
+                                    <span style={{ fontWeight: 800, color: '#f87171' }}>{re}</span>
+                                 </div>
+                                 
+                                 <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px dashed #1e293b', fontSize: 11, color: '#475569', fontStyle: 'italic' }}>
+                                   AQL Seviyesi: {aql} (Plan tabanlı)
+                                 </div>
+                              </div>
+                            );
+                         })()}
+                       </div>
                    </div>
                 </div>
              </div>

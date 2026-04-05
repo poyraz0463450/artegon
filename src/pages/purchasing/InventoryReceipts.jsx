@@ -34,7 +34,10 @@ export default function InventoryReceipts() {
   // Form State
   const [form, setForm] = useState({ 
     receiptNo: '', poId: '', poNumber: '', supplierName: '', 
-    waybillNo: '', receivedDate: new Date().toISOString().split('T')[0],
+    waybillNo: '', waybillDate: new Date().toISOString().split('T')[0],
+    receivedDate: new Date().toISOString().split('T')[0],
+    damageStatus: 'Hasarsız',
+    damageNotes: '',
     items: [] 
   });
 
@@ -54,13 +57,25 @@ export default function InventoryReceipts() {
   };
 
   const selectPO = (po) => {
-    const items = po.items.map(it => ({
-      ...it,
-      receivedQty: it.qty - (it.deliveredQty || 0),
-      lotNumber: `L-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${Math.floor(Math.random()*9000)+1000}`,
-      location: 'D-01-A-01',
-      status: 'Karantina'
-    }));
+    const items = po.items.map(it => {
+      const part = parts.find(p => p.id === it.partId);
+      const isCritical = part?.isCritical || false;
+      const expectedQty = it.qty - (it.deliveredQty || 0);
+      
+      const now = new Date();
+      const lotNo = `LOT-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${Math.floor(Math.random()*9000)+1000}`;
+
+      return {
+        ...it,
+        receivedQty: expectedQty,
+        lotNumber: lotNo,
+        location: part?.warehouseLocation || 'A-01-01',
+        status: 'Karantina',
+        isCritical,
+        serials: isCritical ? Array(expectedQty).fill('') : [],
+        damagePhoto: null
+      };
+    });
     setForm({
       ...form,
       receiptNo: `GRN-${new Date().getFullYear()}-${Math.floor(Math.random()*9000)+1000}`,
@@ -75,23 +90,55 @@ export default function InventoryReceipts() {
 
   const handleProcess = async () => {
     if (!canOperate) return;
+    
+    // Validate serials if critical
+    for (const item of form.items) {
+      if (item.isCritical && item.serials.some(s => !s)) {
+        return toast.error(`${item.partNumber} için tüm seri numaralarını giriniz.`);
+      }
+    }
+
     try {
       // 1. Update Inventory for each item
       for (const item of form.items) {
           if (item.receivedQty <= 0) continue;
 
-          // Add to Batches (Lots)
-          await addInventoryBatch({
-            partId: item.partId,
-            partNumber: item.partNumber,
-            lotNumber: item.lotNumber,
-            quantity: item.receivedQty,
-            location: item.location,
-            status: 'Karantina', // All purchases start in Quarantine
-            supplierId: form.supplierId,
-            poId: form.poId,
-            entryDate: new Date().toISOString()
-          });
+          if (item.isCritical) {
+            // Each serial is a separate batch
+            for (const serial of item.serials) {
+              await addInventoryBatch({
+                partId: item.partId,
+                partNumber: item.partNumber,
+                lotNumber: item.lotNumber,
+                serialNumber: serial,
+                quantity: 1,
+                remainingQty: 1,
+                location: item.location,
+                status: 'Karantina',
+                supplierId: form.supplierId,
+                poId: form.poId,
+                waybillNo: form.waybillNo,
+                damageStatus: form.damageStatus,
+                receivedDate: new Date().toISOString()
+              });
+            }
+          } else {
+            // Single batch for the lot
+            await addInventoryBatch({
+              partId: item.partId,
+              partNumber: item.partNumber,
+              lotNumber: item.lotNumber,
+              quantity: item.receivedQty,
+              remainingQty: item.receivedQty,
+              location: item.location,
+              status: 'Karantina',
+              supplierId: form.supplierId,
+              poId: form.poId,
+              waybillNo: form.waybillNo,
+              damageStatus: form.damageStatus,
+              receivedDate: new Date().toISOString()
+            });
+          }
 
           // Add Stock Movement
           await addStockMovement({
@@ -100,7 +147,7 @@ export default function InventoryReceipts() {
             quantity: item.receivedQty,
             lotNumber: item.lotNumber,
             reference: form.receiptNo,
-            notes: `${form.poNumber} nolu siparişten mal kabul.`
+            notes: `${form.poNumber} nolu siparişten mal kabul. İrsaliye: ${form.waybillNo}`
           });
 
           // Update Part Master Total Stock
@@ -111,16 +158,15 @@ export default function InventoryReceipts() {
       }
 
       // 2. Update PO status
-      const po = orders.find(o => o.id === form.poId);
-      const allReceived = form.items.every(it => it.receivedQty >= it.qty); // Simplified
       await updatePurchaseOrder(form.poId, {
-        status: allReceived ? 'Tamamlandı' : 'Kısmi Teslim'
+        status: 'Kısmi Teslim' // Simple toggle for now
       });
 
       toast.success('Mal kabul başarıyla tamamlandı. Parçalar karantinaya alındı.');
       navigate('/purchasing/orders');
     } catch (e) {
       toast.error('İşlem sırasında hata oluştu');
+      console.error(e);
     }
   };
 
@@ -166,42 +212,73 @@ export default function InventoryReceipts() {
                         </thead>
                         <tbody>
                            {form.items.map((item, idx) => (
-                             <tr key={idx}>
-                                <td style={TD}>
-                                   <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                      <span style={{ color: '#f1f5f9', fontWeight: 700 }}>{item.partNumber}</span>
-                                      <span style={{ fontSize: 11, color: '#475569' }}>{item.partName}</span>
-                                   </div>
-                                </td>
-                                <td style={{ ...TD, textAlign: 'right', fontWeight: 700 }}>{item.qty}</td>
-                                <td style={{ ...TD, textAlign: 'right' }}>
-                                   <input 
-                                     type="number" 
-                                     style={{ ...INPUT, width: 80, height: 32, textAlign: 'right', borderColor: '#0e7490' }} 
-                                     value={item.receivedQty} 
-                                     onChange={e => {
-                                       const items = [...form.items];
-                                       items[idx].receivedQty = Number(e.target.value);
-                                       setForm({ ...form, items });
-                                     }}
-                                   />
-                                </td>
-                                <td style={TD}>
-                                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                      <Hash size={12} color="#475569" />
-                                      <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#e2e8f0' }}>{item.lotNumber}</span>
-                                   </div>
-                                </td>
-                                <td style={TD}>
-                                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                      <MapPin size={12} color="#475569" />
-                                      <span style={{ fontSize: 12 }}>{item.location}</span>
-                                   </div>
-                                </td>
-                                <td style={TD}>
-                                   <span style={{ fontSize: 10, fontWeight: 900, padding: '3px 8px', borderRadius: 4, background: '#422006', color: '#fbbf24' }}>KARANTİNA</span>
-                                </td>
-                             </tr>
+                             <div key={idx} style={{ display: 'contents' }}>
+                               <tr key={idx}>
+                                  <td style={TD}>
+                                     <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                        <span style={{ color: '#f1f5f9', fontWeight: 700 }}>{item.partNumber}</span>
+                                        <span style={{ fontSize: 11, color: '#475569' }}>{item.partName}</span>
+                                     </div>
+                                  </td>
+                                  <td style={{ ...TD, textAlign: 'right', fontWeight: 700 }}>{item.qty}</td>
+                                  <td style={{ ...TD, textAlign: 'right' }}>
+                                     <input 
+                                       type="number" 
+                                       style={{ ...INPUT, width: 80, height: 32, textAlign: 'right', borderColor: '#0e7490' }} 
+                                       value={item.receivedQty} 
+                                       onChange={e => {
+                                         const items = [...form.items];
+                                         items[idx].receivedQty = Number(e.target.value);
+                                         setForm({ ...form, items });
+                                       }}
+                                     />
+                                  </td>
+                                  <td style={TD}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                         <Hash size={12} color="#475569" />
+                                         <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#e2e8f0' }}>{item.lotNumber}</span>
+                                      </div>
+                                   </td>
+                                   <td style={TD}>
+                                      <input 
+                                        style={{ ...INPUT, height: 32, fontSize: 11 }} 
+                                        value={item.location} 
+                                        onChange={e => {
+                                          const items = [...form.items];
+                                          items[idx].location = e.target.value;
+                                          setForm({ ...form, items });
+                                        }}
+                                      />
+                                   </td>
+                                   <td style={TD}>
+                                      <span style={{ fontSize: 10, fontWeight: 900, padding: '3px 8px', borderRadius: 4, background: '#422006', color: '#fbbf24' }}>KARANTİNA</span>
+                                   </td>
+                                </tr>
+                                {item.isCritical && (
+                                  <tr key={`serials-${idx}`}>
+                                    <td colSpan={6} style={{ padding: '0 16px 16px', background: 'rgba(239, 68, 68, 0.02)' }}>
+                                       <div style={{ background: '#0a0f1e', padding: 12, borderRadius: 8, border: '1px dashed #ef4444' }}>
+                                          <p style={{ margin: '0 0 8px', fontSize: 11, fontWeight: 800, color: '#ef4444' }}>🔴 KRİTİK PARÇA - SERİ NUMARASI GİRİŞİ ZORUNLUDUR</p>
+                                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
+                                             {item.serials.map((s, sIdx) => (
+                                               <input 
+                                                 key={sIdx} 
+                                                 placeholder={`Seri No ${sIdx + 1}`} 
+                                                 style={{ ...INPUT, height: 30, fontSize: 11 }} 
+                                                 value={s}
+                                                 onChange={e => {
+                                                    const items = [...form.items];
+                                                    items[idx].serials[sIdx] = e.target.value;
+                                                    setForm({ ...form, items });
+                                                 }}
+                                               />
+                                             ))}
+                                          </div>
+                                       </div>
+                                    </td>
+                                  </tr>
+                                )}
+                             </div>
                            ))}
                         </tbody>
                      </table>
@@ -213,6 +290,17 @@ export default function InventoryReceipts() {
                      <h4 style={{ fontSize: 13, fontWeight: 800, color: '#60a5fa', margin: '0 0 16px' }}>Mal Kabul Bilgileri</h4>
                      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                         <div><label style={LABEL_STYLE}>İrsaliye / Fatura No</label><input style={INPUT} value={form.waybillNo} onChange={e=>setForm({...form, waybillNo: e.target.value})} placeholder="Örn: IRS-10293" /></div>
+                        <div><label style={LABEL_STYLE}>İrsaliye Tarihi</label><input type="date" style={INPUT} value={form.waybillDate} onChange={e=>setForm({...form, waybillDate: e.target.value})} /></div>
+                        <div><label style={LABEL_STYLE}>Fiziki Durum</label>
+                           <select style={INPUT} value={form.damageStatus} onChange={e=>setForm({...form, damageStatus: e.target.value})}>
+                              <option value="Hasarsız">Hasarsız (Kabul)</option>
+                              <option value="Hasarlı">Hasarlı (Karantina/Ret)</option>
+                              <option value="Kısmi Hasar">Kısmi Hasarlı</option>
+                           </select>
+                        </div>
+                        {form.damageStatus !== 'Hasarsız' && (
+                          <div><label style={LABEL_STYLE}>Hasar Notu / Açıklama</label><textarea style={{...INPUT, height: 60, padding: 8}} value={form.damageNotes} onChange={e=>setForm({...form, damageNotes: e.target.value})} /></div>
+                        )}
                         <div><label style={LABEL_STYLE}>Kabul Tarihi</label><input type="date" style={INPUT} value={form.receivedDate} onChange={e=>setForm({...form, receivedDate: e.target.value})} /></div>
                         <div><label style={LABEL_STYLE}>Kabul Eden</label><input style={INPUT} value={userDoc?.displayName} disabled /></div>
                         
